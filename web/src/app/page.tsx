@@ -2,7 +2,42 @@
 
 import Link from "next/link";
 import { ArrowRight, ChevronRight } from "lucide-react";
-import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+type IdleRequestHandle = number;
+
+function requestIdle(cb: () => void, timeoutMs = 1200): IdleRequestHandle {
+  if (typeof window === "undefined") return 0;
+  const anyWindow = window as unknown as { requestIdleCallback?: (fn: () => void, opts?: { timeout: number }) => number };
+  if (anyWindow.requestIdleCallback) {
+    return anyWindow.requestIdleCallback(cb, { timeout: timeoutMs });
+  }
+  return window.setTimeout(cb, Math.min(timeoutMs, 400));
+}
+
+function cancelIdle(handle: IdleRequestHandle) {
+  if (typeof window === "undefined") return;
+  const anyWindow = window as unknown as { cancelIdleCallback?: (id: number) => void };
+  if (anyWindow.cancelIdleCallback) {
+    anyWindow.cancelIdleCallback(handle);
+    return;
+  }
+  window.clearTimeout(handle);
+}
+
+async function decodeImage(src: string) {
+  const img = new Image();
+  img.decoding = "async";
+  img.src = src;
+  try {
+    await img.decode();
+  } catch {
+    await new Promise<void>((resolve) => {
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+    });
+  }
+}
 
 export default function Home() {
   const IMAGES = useMemo(
@@ -29,8 +64,10 @@ export default function Home() {
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [isMobile, setIsMobile] = useState(() => (typeof window === "undefined" ? false : window.innerWidth < 640));
+  const [isMobile, setIsMobile] = useState(false);
   const unlockTimerRef = useRef<number | null>(null);
+  const idleHandleRef = useRef<IdleRequestHandle | null>(null);
+  const preloadRef = useRef<Map<string, Promise<void>>>(new Map());
 
   const grainDataUri = useMemo(() => {
     const svg =
@@ -38,28 +75,71 @@ export default function Home() {
     return `url(\"data:image/svg+xml,${encodeURIComponent(svg)}\")`;
   }, []);
 
+  const preload = useCallback((src: string) => {
+    const cached = preloadRef.current.get(src);
+    if (cached) return cached;
+    const p = decodeImage(src);
+    preloadRef.current.set(src, p);
+    return p;
+  }, []);
+
+  const preloadNeighbors = useCallback((index: number) => {
+    const next = (index + 1) % IMAGES.length;
+    const prev = (index + IMAGES.length - 1) % IMAGES.length;
+    preload(IMAGES[index]!.src);
+    preload(IMAGES[next]!.src);
+    preload(IMAGES[prev]!.src);
+  }, [IMAGES, preload]);
+
   useEffect(() => {
-    for (const { src } of IMAGES) {
-      const img = new Image();
-      img.src = src;
-    }
-  }, [IMAGES]);
+    preloadNeighbors(0);
+    idleHandleRef.current = requestIdle(() => {
+      for (let i = 0; i < IMAGES.length; i += 1) {
+        preload(IMAGES[i]!.src);
+      }
+    });
+    return () => {
+      if (idleHandleRef.current !== null) {
+        cancelIdle(idleHandleRef.current);
+        idleHandleRef.current = null;
+      }
+    };
+  }, [IMAGES, preload, preloadNeighbors]);
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 640);
+    onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    preloadNeighbors(activeIndex);
+    if (idleHandleRef.current !== null) {
+      cancelIdle(idleHandleRef.current);
+    }
+    idleHandleRef.current = requestIdle(() => {
+      for (let i = 0; i < IMAGES.length; i += 1) {
+        if (i === activeIndex) continue;
+        preload(IMAGES[i]!.src);
+      }
+    });
+  }, [IMAGES, activeIndex, preload, preloadNeighbors]);
 
   useEffect(() => {
     return () => {
       if (unlockTimerRef.current !== null) {
         window.clearTimeout(unlockTimerRef.current);
       }
+      if (idleHandleRef.current !== null) {
+        cancelIdle(idleHandleRef.current);
+        idleHandleRef.current = null;
+      }
     };
   }, []);
 
-  const EASE = "650ms cubic-bezier(0.4,0,0.2,1)";
+  const DURATION_MS = 650;
+  const EASE = `${DURATION_MS}ms cubic-bezier(0.4,0,0.2,1)`;
 
   function getRole(index: number, active: number) {
     const center = active;
@@ -75,8 +155,9 @@ export default function Home() {
     if (isAnimating) return;
     setIsAnimating(true);
     setActiveIndex((prev) => {
-      if (direction === "next") return (prev + 1) % 4;
-      return (prev + 3) % 4;
+      const next = direction === "next" ? (prev + 1) % IMAGES.length : (prev + IMAGES.length - 1) % IMAGES.length;
+      preloadNeighbors(next);
+      return next;
     });
 
     if (unlockTimerRef.current !== null) {
@@ -85,7 +166,7 @@ export default function Home() {
     unlockTimerRef.current = window.setTimeout(() => {
       setIsAnimating(false);
       unlockTimerRef.current = null;
-    }, 650);
+    }, DURATION_MS);
   }
 
   return (
@@ -137,18 +218,19 @@ export default function Home() {
               left: "50%",
               bottom: 0,
               aspectRatio: "0.6 / 1",
-              transform: "translateX(-50%) scale(1)",
+              transform: "translate3d(-50%, 0, 0) scale(1)",
               opacity: 1,
               filter: "blur(0px)",
-              transition: `transform ${EASE}, filter ${EASE}, opacity ${EASE}, left ${EASE}`,
-              willChange: "transform, filter, opacity",
+              transition: `transform ${EASE}, opacity ${EASE}, left ${EASE}`,
+              willChange: "transform, opacity",
+              backfaceVisibility: "hidden",
             };
 
             const centerStyle: CSSProperties = {
               left: "50%",
               height: isMobile ? "60%" : "92%",
               bottom: isMobile ? "22%" : 0,
-              transform: `translateX(-50%) scale(${isMobile ? 1.25 : 1.68})`,
+              transform: `translate3d(-50%, 0, 0) scale(${isMobile ? 1.25 : 1.68})`,
               opacity: 1,
               filter: "blur(0px)",
               zIndex: 20,
@@ -158,7 +240,7 @@ export default function Home() {
               left: isMobile ? "20%" : "30%",
               height: isMobile ? "16%" : "28%",
               bottom: isMobile ? "32%" : "12%",
-              transform: "translateX(-50%) scale(1)",
+              transform: "translate3d(-50%, 0, 0) scale(1)",
               opacity: 0.85,
               filter: "blur(2px)",
               zIndex: 10,
@@ -168,7 +250,7 @@ export default function Home() {
               left: isMobile ? "80%" : "70%",
               height: isMobile ? "16%" : "28%",
               bottom: isMobile ? "32%" : "12%",
-              transform: "translateX(-50%) scale(1)",
+              transform: "translate3d(-50%, 0, 0) scale(1)",
               opacity: 0.85,
               filter: "blur(2px)",
               zIndex: 10,
@@ -178,7 +260,7 @@ export default function Home() {
               left: "50%",
               height: isMobile ? "13%" : "22%",
               bottom: isMobile ? "32%" : "12%",
-              transform: "translateX(-50%) scale(1)",
+              transform: "translate3d(-50%, 0, 0) scale(1)",
               opacity: 1,
               filter: "blur(4px)",
               zIndex: 5,
@@ -189,7 +271,19 @@ export default function Home() {
 
             return (
               <div key={img.src} style={{ ...baseStyle, ...roleStyle }}>
-                <img src={img.src} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "bottom center" }} />
+                <img
+                  src={img.src}
+                  alt=""
+                  draggable={false}
+                  loading={idx === activeIndex ? "eager" : "lazy"}
+                  decoding="async"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                    objectPosition: "bottom center",
+                  }}
+                />
               </div>
             );
           })}
