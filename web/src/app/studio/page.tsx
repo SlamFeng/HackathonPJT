@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { createJob, getJob } from "@/lib/api";
+import { absUrl, createJob, getJob } from "@/lib/api";
 import { ClosetItem, useAppStore } from "@/stores/useAppStore";
 
 const poses = [
@@ -58,7 +58,7 @@ export default function StudioPage() {
         if (latest.status === "succeeded") {
           const out = latest.artifacts?.find((a) => a.kind === "image")?.url;
           if (!out) throw new Error("未返回姿态图");
-          setPoseImageUrl(out);
+          setPoseImageUrl(absUrl(out));
           setPoseProgress(1);
           return;
         }
@@ -96,7 +96,7 @@ export default function StudioPage() {
         if (latest.status === "succeeded") {
           const out = latest.artifacts?.find((a) => a.kind === "image")?.url;
           if (!out) throw new Error("未返回试穿图");
-          setTryonImageUrl(out);
+          setTryonImageUrl(absUrl(out));
           setTryonProgress(1);
           return;
         }
@@ -274,4 +274,3 @@ function SkeletonLine() {
     </div>
   );
 }
-

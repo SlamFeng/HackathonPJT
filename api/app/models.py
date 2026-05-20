@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from enum import StrEnum
+try:
+    # Python 3.11+
+    from enum import StrEnum
+except ImportError:  # pragma: no cover
+    # Python 3.10 兼容：简易 StrEnum 实现（满足 FastAPI/Pydantic 的枚举序列化需求）
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        pass
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -42,7 +50,8 @@ class JobConstraints(BaseModel):
     garmentLock: bool | None = True
     seed: int | None = None
     qualityLevel: str | None = "standard"
-    timeoutSec: int | None = 30
+    # Gemini/NanoBanana 的图像生成与编辑经常超过 30s，默认放宽，避免任务误判超时
+    timeoutSec: int | None = 180
 
 
 class JobCreateRequest(BaseModel):
@@ -79,4 +88,3 @@ class JobResponse(BaseModel):
     artifacts: list[JobArtifact] | None = None
     qualityScores: QualityScores | None = None
     error: JobError | None = None
-

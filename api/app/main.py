@@ -98,12 +98,16 @@ async def _run_job(job_id: str) -> None:
         )
         await job_store.emit(job_id, "done", 1.0, "完成")
     except Exception as e:
+        msg = str(e)
+        if not msg:
+            # TimeoutError 等异常的 str() 可能为空，补充类型信息方便排查
+            msg = f"{type(e).__name__}"
         await job_store.update(
             job_id,
             status=JobStatus.failed,
             stage="failed",
             progress=1.0,
-            error={"code": "INFERENCE_FAILED", "message": str(e)},
+            error={"code": "INFERENCE_FAILED", "message": msg},
         )
         await job_store.emit(job_id, "failed", 1.0, "失败")
 
@@ -153,4 +157,3 @@ async def job_events(job_id: str) -> StreamingResponse:
 @app.get("/health")
 async def health() -> JSONResponse:
     return JSONResponse({"ok": True})
-

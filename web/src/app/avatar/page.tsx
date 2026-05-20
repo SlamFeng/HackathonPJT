@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { z } from "zod";
 
-import { createJob, getJob, uploadAsset } from "@/lib/api";
+import { absUrl, createJob, getJob, uploadAsset } from "@/lib/api";
 import { useAppStore } from "@/stores/useAppStore";
 
 const optionalNumber = (min: number, max: number) =>
@@ -73,11 +73,14 @@ export default function AvatarPage() {
       const job = await createJob({
         jobType: "avatar_generate",
         inputs: { imageUrl: uploaded.url, bodyParams: parsed.data },
-        constraints: { identityLock: true, poseLock: true, garmentLock: true, qualityLevel: "high" },
+        // 图像生成耗时可能较长（尤其是首次调用/高质量），这里显式放宽后端超时
+        constraints: { identityLock: true, poseLock: true, garmentLock: true, qualityLevel: "high", timeoutSec: 180 },
       });
 
-      let tries = 0;
-      while (tries < 60) {
+      // 移除过短的前端超时限制：改为“最多等待 5 分钟”，用于你先完成接口联调验证
+      const start = Date.now();
+      const MAX_WAIT_MS = 5 * 60 * 1000;
+      while (Date.now() - start < MAX_WAIT_MS) {
         const latest = await getJob(job.jobId);
         setStage(latest.stage ?? "处理中");
         setProgress(Math.max(latest.progress ?? 0, 0.2));
@@ -85,7 +88,8 @@ export default function AvatarPage() {
         if (latest.status === "succeeded") {
           const out = latest.artifacts?.find((a) => a.kind === "image")?.url;
           if (!out) throw new Error("未返回图片");
-          setAvatar({ avatarImageUrl: out });
+          // 后端通常返回 /static/xxx.png（相对 API 服务），这里转成绝对 URL，避免前端去请求 localhost:3000/static 导致看不到结果
+          setAvatar({ avatarImageUrl: absUrl(out) });
           setProgress(1);
           setStage("完成");
           return;
@@ -94,9 +98,8 @@ export default function AvatarPage() {
           throw new Error(latest.error?.message ?? "生成失败");
         }
         await new Promise((r) => setTimeout(r, 350));
-        tries += 1;
       }
-      throw new Error("任务超时");
+      throw new Error("任务超时（等待超过 5 分钟）");
     } catch (e) {
       setError(e instanceof Error ? e.message : "发生错误");
     } finally {

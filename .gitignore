@@ -1,19 +1,22 @@
-.DS_Store
-Thumbs.db
+### Python
+__pycache__/
+*.py[cod]
+.Python
+.venv/
 
-api/.venv/
-api/__pycache__/
-api/app/__pycache__/
-api/app/inference/__pycache__/
-api/storage/
+### Node / Next.js
+node_modules/
+.next/
 
-web/node_modules/
-web/.next/
-
-**/__pycache__/
-*.pyc
-
+### Local env
 .env
-.env.local
-api/.env
-web/.env.local
+.env.*
+!.env.example
+
+### Outputs
+storage/
+*.jpg
+*.jpeg
+*.png
+*.webp
+

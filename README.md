@@ -45,7 +45,7 @@ npx next dev --port 3000
 - http://localhost:3000/
 - 首次进入为门户页（/），右下角箭头进入工作台（/workbench）
 
-## 3. 环境变量（接入真实 nanobanana）
+## 3. 环境变量（接入真实 NanoBanana / Gemini 原生图像）
 
 默认未配置密钥时，后端会走 mock（回显输入图片），用于先打通链路。
 
@@ -57,8 +57,9 @@ Copy-Item .env.example .env
 ```
 
 `.env` 字段：
-- `NANOBANANA_API_KEY`：nanobanana 的调用密钥
-- `NANOBANANA_ENDPOINT`：你们封装后的 nanobanana 接口地址（建议统一成一个 endpoint）
+- `NANOBANANA_API_KEY`：Google AI Studio / Gemini API Key
+- `NANOBANANA_MODEL`：默认 `gemini-3.1-flash-image-preview`（Nano Banana 2）
+- `NANOBANANA_ENDPOINT`：（可选）自定义 generateContent 的完整地址；不填则使用默认
 
 ### 3.2 前端 `.env.local`
 前端默认请求 `http://localhost:8000`，如需修改：

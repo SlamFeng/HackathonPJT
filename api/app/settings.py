@@ -15,7 +15,8 @@ class Settings(BaseSettings):
 
     nanobanana_api_key: str | None = None
     nanobanana_endpoint: str | None = None
+    # NanoBanana（Gemini 原生图像能力）默认模型：Gemini 3.1 Flash Image Preview
+    nanobanana_model: str = "gemini-3.1-flash-image-preview"
 
 
 settings = Settings()
-
