@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { absUrl, createJob, getJob, uploadAsset } from "@/lib/api";
 import { useAppStore } from "@/stores/useAppStore";
+import AutoAspectImage from "@/components/AutoAspectImage";
 
 const optionalNumber = (min: number, max: number) =>
   z.preprocess(
@@ -185,7 +186,12 @@ export default function AvatarPage() {
           <div className="text-xs text-zinc-500">当前数字人</div>
           <div className="mt-3">
             {avatar.avatarImageUrl ? (
-              <img src={avatar.avatarImageUrl} alt="avatar" className="h-[420px] w-full rounded-3xl bg-zinc-100 object-cover" />
+              <AutoAspectImage
+                src={avatar.avatarImageUrl}
+                alt="avatar"
+                className="w-full overflow-hidden rounded-3xl bg-zinc-100"
+                initialAspectRatio={3 / 4}
+              />
             ) : (
               <div className="flex h-[420px] w-full items-center justify-center rounded-3xl bg-zinc-50 text-xs text-zinc-500">
                 尚未生成

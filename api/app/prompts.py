@@ -44,7 +44,8 @@ def avatar_generate_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any
             "1) 必须保持人物身份一致：脸部五官、发型发色、肤色尽可能与原图一致；",
             "2) 输出写实风格，细节清晰，曝光正常；",
             "3) 背景替换为干净的浅色影棚背景（接近纯色），不要杂物；",
-            "4) 人物全身可见（从头到脚），居中，站姿自然；",
+            "4) 人物必须从头部到鞋子完整可见（头顶与鞋子都不能被裁切），居中，站姿自然；",
+            "   - 构图需留出足够边距，确保鞋子/脚部完整清晰可见；",
             "5) 服装尽量简洁贴身（例如纯色上衣+简单长裤），便于后续试穿叠加；",
             "6) 不要添加文字、水印、边框或额外人物；",
             "",
@@ -75,4 +76,3 @@ def build_prompt(*, task: str, inputs: dict[str, Any], constraints: dict[str, An
     if builder is None:
         raise KeyError(f"Prompt not found for task: {task}")
     return builder(inputs=inputs, constraints=constraints)
-
