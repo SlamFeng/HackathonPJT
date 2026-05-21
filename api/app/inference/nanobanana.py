@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 
+from ..prompts import build_prompt
 from ..settings import settings
 
 
@@ -69,26 +70,6 @@ class NanobananaProvider:
         # 文档：POST https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent
         return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
-    def _build_avatar_prompt(self, *, body_params: dict[str, Any] | None) -> str:
-        # 目标：生成“可试穿的基础数字人”——身份保持优先，背景干净，衣着尽量简洁。
-        # 注意：这里仅作为 MVP prompt，可后续做成模板化 preset。
-        parts: list[str] = [
-            "请基于我提供的全身照片生成一张“数字人基础形象（avatar base）”图片：",
-            "1) 必须保持人物身份一致：脸部五官、发型发色、肤色尽可能与原图一致；",
-            "2) 输出为写实风格、光线均匀、细节清晰；",
-            "3) 背景替换为干净的浅色影棚背景（接近纯色），不要杂物；",
-            "4) 人物保持全身可见（从头到脚），居中，尽量保持原姿态；",
-            "5) 服装尽量简洁贴身（例如纯色上衣+简单长裤），便于后续虚拟试穿叠加；",
-            "6) 不要添加文字、水印、边框或额外人物。",
-        ]
-        if body_params:
-            # 以“指导”而非“强制改形”为主，避免出现畸形
-            hp = body_params.get("heightCm")
-            wp = body_params.get("weightKg")
-            if hp or wp:
-                parts.append(f"体型参数参考（仅用于轻微修正比例，不要夸张变形）：身高={hp}cm，体重={wp}kg。")
-        return "\n".join(parts)
-
     async def _call(self, *, task: str, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> dict[str, Any]:
         image_url = inputs.get("imageUrl") or inputs.get("avatarImageUrl") or inputs.get("garmentImageUrl")
         if not settings.nanobanana_api_key or not image_url:
@@ -104,7 +85,7 @@ class NanobananaProvider:
         img_bytes, mime = await self._read_uploaded_image(image_url, timeout=min(20, float(timeout)))
         b64 = base64.b64encode(img_bytes).decode("utf-8")
 
-        prompt = self._build_avatar_prompt(body_params=inputs.get("bodyParams"))
+        prompt = build_prompt(task=task, inputs=inputs, constraints=constraints)
         payload = {
             "contents": [
                 {
