@@ -3,7 +3,16 @@
 import { useMemo, useState } from "react";
 
 import { absUrl, createJob, getJob } from "@/lib/api";
-import { ClosetItem, useAppStore } from "@/stores/useAppStore";
+import { ClosetCategory, ClosetItem, useAppStore } from "@/stores/useAppStore";
+
+type OverlayTransform = {
+  cx: number;
+  cy: number;
+  w: number;
+  rotationDeg?: number;
+  opacity?: number;
+  blendMode?: string;
+};
 
 const poses = [
   { id: "hands_on_hips", label: "叉腰" },
@@ -27,6 +36,8 @@ export default function StudioPage() {
   const [tryonProgress, setTryonProgress] = useState(0);
   const [poseImageUrl, setPoseImageUrl] = useState<string | null>(null);
   const [tryonImageUrl, setTryonImageUrl] = useState<string | null>(null);
+  const [tryonOverlayGarmentUrl, setTryonOverlayGarmentUrl] = useState<string | null>(null);
+  const [tryonOverlayTransform, setTryonOverlayTransform] = useState<OverlayTransform | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const baseAvatarUrl = poseImageUrl ?? avatar.avatarImageUrl ?? null;
@@ -42,6 +53,8 @@ export default function StudioPage() {
     setBusyPose(true);
     setPoseProgress(0.05);
     setTryonImageUrl(null);
+    setTryonOverlayGarmentUrl(null);
+    setTryonOverlayTransform(null);
 
     try {
       const job = await createJob({
@@ -81,11 +94,13 @@ export default function StudioPage() {
 
     setBusyTryon(true);
     setTryonProgress(0.05);
+    setTryonOverlayGarmentUrl(null);
+    setTryonOverlayTransform(null);
 
     try {
       const job = await createJob({
         jobType: "vton_tryon",
-        inputs: { avatarImageUrl: baseAvatarUrl, garmentImageUrl: garment.imageUrl, poseId },
+        inputs: { avatarImageUrl: baseAvatarUrl, garmentImageUrl: garment.imageUrl, garmentCategory: garment.category, poseId },
         constraints: { identityLock: true, poseLock: true, garmentLock: true, qualityLevel: "high" },
       });
 
@@ -94,9 +109,16 @@ export default function StudioPage() {
         const latest = await getJob(job.jobId);
         setTryonProgress(Math.max(latest.progress ?? 0.05, 0.05));
         if (latest.status === "succeeded") {
-          const out = latest.artifacts?.find((a) => a.kind === "image")?.url;
+          const img = latest.artifacts?.find((a) => a.kind === "image");
+          const out = img?.url;
           if (!out) throw new Error("未返回试穿图");
+          const meta = (img?.meta ?? {}) as Record<string, unknown>;
+          const overlay = typeof meta.overlayGarmentImageUrl === "string" ? meta.overlayGarmentImageUrl : null;
+          const transformRaw = meta.overlayTransform as unknown;
+          const transform = normalizeOverlayTransform(transformRaw);
           setTryonImageUrl(absUrl(out));
+          setTryonOverlayGarmentUrl(overlay ? absUrl(overlay) : null);
+          setTryonOverlayTransform(transform);
           setTryonProgress(1);
           return;
         }
@@ -209,6 +231,9 @@ export default function StudioPage() {
             title="试穿预览"
             subtitle={busyTryon ? `生成中… ${Math.round(tryonProgress * 100)}%` : "边缘贴合 · 光影褶皱"}
             imageUrl={tryonImageUrl}
+            overlayImageUrl={tryonOverlayGarmentUrl}
+            overlayTransform={tryonOverlayTransform}
+            overlayCategory={garment?.category ?? null}
             loading={busyTryon}
             emptyText="选择单品后点击「一键试穿」"
           />
@@ -222,15 +247,26 @@ function PreviewCard({
   title,
   subtitle,
   imageUrl,
+  overlayImageUrl,
+  overlayTransform,
+  overlayCategory,
   loading,
   emptyText,
 }: {
   title: string;
   subtitle: string;
   imageUrl: string | null | undefined;
+  overlayImageUrl?: string | null;
+  overlayTransform?: OverlayTransform | null;
+  overlayCategory?: ClosetCategory | null;
   loading: boolean;
   emptyText?: string;
 }) {
+  const overlayStyle = overlayTransform
+    ? overlayTransformToStyle(overlayTransform)
+    : overlayCategory
+      ? getOverlayStyle(overlayCategory)
+      : null;
   return (
     <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
       <div className="flex items-end justify-between gap-3">
@@ -242,7 +278,17 @@ function PreviewCard({
       </div>
       <div className="relative mt-4 h-[520px] overflow-hidden rounded-3xl bg-zinc-50">
         {imageUrl ? (
-          <img src={imageUrl} alt={title} className="h-full w-full object-cover" />
+          <>
+            <img src={imageUrl} alt={title} className="h-full w-full object-contain" />
+            {overlayImageUrl ? (
+              <img
+                src={overlayImageUrl}
+                alt="overlay"
+                className="pointer-events-none absolute object-contain"
+                style={overlayStyle ?? { left: "50%", top: "50%", width: "70%", height: "auto", transform: "translate(-50%, -50%)" }}
+              />
+            ) : null}
+          </>
         ) : (
           <div className="flex h-full w-full items-center justify-center px-10 text-center text-xs text-zinc-500">
             {emptyText ?? "尚未生成"}
@@ -273,4 +319,52 @@ function SkeletonLine() {
       <div className="h-2 w-16 animate-pulse rounded-full bg-zinc-200" />
     </div>
   );
+}
+
+function getOverlayStyle(category: ClosetCategory): React.CSSProperties {
+  const base: React.CSSProperties = { left: "50%", transform: "translate(-50%, -50%)", height: "auto" };
+  if (category === "top") return { ...base, top: "40%", width: "66%" };
+  if (category === "outerwear") return { ...base, top: "42%", width: "74%" };
+  if (category === "dress") return { ...base, top: "54%", width: "74%" };
+  if (category === "suit") return { ...base, top: "52%", width: "78%" };
+  if (category === "skirt") return { ...base, top: "62%", width: "70%" };
+  if (category === "pants") return { ...base, top: "70%", width: "62%" };
+  if (category === "underwear") return { ...base, top: "52%", width: "66%" };
+  if (category === "shoes") return { ...base, top: "88%", width: "50%" };
+  return { ...base, top: "40%", width: "66%" };
+}
+
+function normalizeOverlayTransform(v: unknown): OverlayTransform | null {
+  if (!v || typeof v !== "object") return null;
+  const obj = v as Record<string, unknown>;
+  const cx = Number(obj.cx);
+  const cy = Number(obj.cy);
+  const w = Number(obj.w);
+  if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(w)) return null;
+  const rotationDeg = obj.rotationDeg == null ? undefined : Number(obj.rotationDeg);
+  const opacity = obj.opacity == null ? undefined : Number(obj.opacity);
+  const blendMode = typeof obj.blendMode === "string" ? obj.blendMode : undefined;
+  return {
+    cx: Math.max(0, Math.min(1, cx)),
+    cy: Math.max(0, Math.min(1, cy)),
+    w: Math.max(0.15, Math.min(0.95, w)),
+    rotationDeg: rotationDeg != null && Number.isFinite(rotationDeg) ? rotationDeg : undefined,
+    opacity: opacity != null && Number.isFinite(opacity) ? Math.max(0.15, Math.min(1, opacity)) : undefined,
+    blendMode,
+  };
+}
+
+function overlayTransformToStyle(t: OverlayTransform): React.CSSProperties {
+  const rot = t.rotationDeg ?? 0;
+  const opacity = t.opacity ?? 0.8;
+  const blend = t.blendMode ?? "multiply";
+  return {
+    left: `${t.cx * 100}%`,
+    top: `${t.cy * 100}%`,
+    width: `${t.w * 100}%`,
+    height: "auto",
+    transform: `translate(-50%, -50%) rotate(${rot}deg)`,
+    opacity,
+    mixBlendMode: blend as React.CSSProperties["mixBlendMode"],
+  };
 }

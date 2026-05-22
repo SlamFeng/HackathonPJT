@@ -9,7 +9,11 @@ const categories: Array<{ id: ClosetCategory; label: string }> = [
   { id: "top", label: "上衣" },
   { id: "pants", label: "裤子" },
   { id: "skirt", label: "裙子" },
+  { id: "dress", label: "连衣裙" },
   { id: "outerwear", label: "外套" },
+  { id: "suit", label: "套装" },
+  { id: "underwear", label: "贴身衣物" },
+  { id: "shoes", label: "鞋子" },
   { id: "accessory", label: "配饰" },
 ];
 
@@ -133,4 +137,3 @@ export default function ClosetPage() {
     </div>
   );
 }
-

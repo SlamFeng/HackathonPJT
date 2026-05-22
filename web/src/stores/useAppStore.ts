@@ -1,6 +1,15 @@
 import { create } from "zustand";
 
-export type ClosetCategory = "top" | "pants" | "skirt" | "outerwear" | "accessory";
+export type ClosetCategory =
+  | "top"
+  | "pants"
+  | "skirt"
+  | "outerwear"
+  | "accessory"
+  | "dress"
+  | "suit"
+  | "underwear"
+  | "shoes";
 
 export type ClosetItem = {
   id: string;
@@ -39,4 +48,3 @@ export const useAppStore = create<AppState>((set) => ({
       closet: s.closet.map((x) => (x.id === id ? { ...x, favorited: !x.favorited } : x)),
     })),
 }));
-

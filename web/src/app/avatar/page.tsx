@@ -7,19 +7,36 @@ import { absUrl, createJob, getJob, uploadAsset } from "@/lib/api";
 import { useAppStore } from "@/stores/useAppStore";
 import AutoAspectImage from "@/components/AutoAspectImage";
 
-const optionalNumber = (min: number, max: number) =>
-  z.preprocess(
-    (v) => (v === "" || v === null ? undefined : v),
-    z.coerce.number().int().min(min).max(max),
-  ).optional();
+const optionalIntInRange = (label: string, min: number, max: number) =>
+  z
+    .string()
+    .trim()
+    .optional()
+    .transform((raw, ctx) => {
+      if (raw == null || raw === "") return undefined;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${label}请输入数字` });
+        return z.NEVER;
+      }
+      if (!Number.isInteger(n)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${label}必须是整数` });
+        return z.NEVER;
+      }
+      if (n < min || n > max) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${label}范围应为 ${min}~${max}` });
+        return z.NEVER;
+      }
+      return n;
+    });
 
 const bodySchema = z.object({
-  heightCm: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(120).max(220)),
-  weightKg: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(30).max(200)),
-  shoulderWidthCm: optionalNumber(20, 80),
-  chestCm: optionalNumber(50, 160),
-  waistCm: optionalNumber(40, 160),
-  hipCm: optionalNumber(50, 180),
+  heightCm: optionalIntInRange("身高", 120, 220),
+  weightKg: optionalIntInRange("体重", 30, 200),
+  shoulderWidthCm: optionalIntInRange("肩宽", 20, 80),
+  chestCm: optionalIntInRange("胸围", 50, 160),
+  waistCm: optionalIntInRange("腰围", 40, 160),
+  hipCm: optionalIntInRange("臀围", 50, 180),
 });
 
 type BodyFormState = {
