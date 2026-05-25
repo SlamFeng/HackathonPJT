@@ -229,7 +229,7 @@ class NanobananaProvider:
             if not settings.nanobanana_api_key or not image_url:
                 return {"imageUrl": image_url, "meta": {"provider": "nanobanana", "mode": "mock", "reason": "missing_api_key_or_image"}}
 
-            if task != "avatar_generate":
+            if task not in ("avatar_generate", "pose_render"):
                 return {"imageUrl": image_url, "meta": {"provider": "nanobanana", "mode": "mock", "reason": "task_not_implemented"}}
 
         timeout = constraints.get("timeoutSec", 60) if constraints else 60

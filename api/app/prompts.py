@@ -131,14 +131,46 @@ def vton_tryon_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | N
     )
 
 
+def pose_render_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> str:
+    quality_level = (constraints or {}).get("qualityLevel") or "standard"
+    pose_id = inputs.get("poseId") or "未指定"
+    return "\n".join(
+        [
+            "你是一名专业的写实人物图像编辑助手。",
+            "",
+            f"任务：基于我提供的人物照片，把人物切换到以下姿态：",
+            f"   - 目标姿态：{pose_id}",
+            "",
+            "要求：",
+            f"1) 根据姿态提示（{pose_id}）调整人物身体、四肢到对应的动作：",
+            "   - hands_on_hips：双手叉腰",
+            "   - neutral_stand：双手自然垂立，站直",
+            "   - hands_behind_back：双手背在身后",
+            "   - runway_walk：像走 T 台一样迈步行走",
+            "   - casual_sit：自然坐在椅子上",
+            "   - side_stand：侧身站立",
+            "2) 必须保持人物身份一致：脸部五官、发型发色、肤色尽可能与原图一致；",
+            "3) 输出写实风格，细节清晰，不要变形；",
+            "4) 背景保持与原图一致，不要自行修改背景或添加额外元素；",
+            "5) 人物必须从头到鞋子完整可见（头顶与鞋子都不能被裁切），全身完整居中展示；",
+            "6) 服装款式、颜色、材质保持与原图一致，随姿态自然变形；",
+            "7) 不要添加文字、水印、边框或额外人物；",
+            "",
+            f"质量等级参考：{quality_level}（尽可能高质量输出，但不要牺牲身份一致性）。",
+            "",
+            "输出格式要求：",
+            "- 必须返回一张图片（不要只返回文字说明）。",
+        ]
+    )
+
+
 PromptBuilder = Callable[[dict[str, Any], dict[str, Any] | None], str]
 
 
 PROMPT_BUILDERS: dict[str, Callable[..., str]] = {
     "avatar_generate": avatar_generate_prompt,
+    "pose_render": pose_render_prompt,
     "vton_tryon": vton_tryon_prompt,
-    # 预留：后续可在此统一管理 pose_render / vton_tryon 等 prompt
-    # "pose_render": ...,
 }
 
 
