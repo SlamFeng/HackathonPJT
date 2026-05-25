@@ -60,7 +60,7 @@ export default function StudioPage() {
       const job = await createJob({
         jobType: "pose_render",
         inputs: { avatarImageUrl: avatar.avatarImageUrl, poseId: nextPoseId },
-        constraints: { identityLock: true, poseLock: true, qualityLevel: "high" },
+        constraints: { identityLock: true, poseLock: true, qualityLevel: "high", timeoutSec: 300 },
       });
 
       let tries = 0;
@@ -101,7 +101,7 @@ export default function StudioPage() {
       const job = await createJob({
         jobType: "vton_tryon",
         inputs: { avatarImageUrl: baseAvatarUrl, garmentImageUrl: garment.imageUrl, garmentCategory: garment.category, poseId },
-        constraints: { identityLock: true, poseLock: true, garmentLock: true, qualityLevel: "high" },
+        constraints: { identityLock: true, poseLock: true, garmentLock: true, qualityLevel: "high", timeoutSec: 300 },
       });
 
       let tries = 0;

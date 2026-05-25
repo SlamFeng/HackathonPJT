@@ -92,7 +92,7 @@ export default function AvatarPage() {
         jobType: "avatar_generate",
         inputs: { imageUrl: uploaded.url, bodyParams: parsed.data },
         // 图像生成耗时可能较长（尤其是首次调用/高质量），这里显式放宽后端超时
-        constraints: { identityLock: true, poseLock: true, garmentLock: true, qualityLevel: "high", timeoutSec: 180 },
+        constraints: { identityLock: true, poseLock: true, garmentLock: true, qualityLevel: "high", timeoutSec: 300 },
       });
 
       // 移除过短的前端超时限制：改为“最多等待 5 分钟”，用于你先完成接口联调验证

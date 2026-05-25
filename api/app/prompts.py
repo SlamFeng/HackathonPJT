@@ -41,125 +41,111 @@ def _estimate_body_params(body_params: dict[str, Any] | None) -> tuple[dict[str,
 
 
 def _format_body_params(body_params: dict[str, Any] | None) -> str:
-    """
-    将前端 BodyFormState（经后端校验后的 bodyParams）格式化注入到 prompt 中。
-    这里要“全量字段”输出，便于后续 prompt 迭代与线上排查。
-    """
     body_params, missing = _estimate_body_params(body_params)
 
     def val(key: str) -> str:
         v = body_params.get(key)
-        return "未填写" if v is None else str(v)
+        return "\u672a\u586b\u5199" if v is None else str(v)
 
     lines = [
-        f"- 身高(cm): {val('heightCm')}",
-        f"- 体重(kg): {val('weightKg')}",
-        f"- 肩宽(cm): {val('shoulderWidthCm')}",
-        f"- 胸围(cm): {val('chestCm')}",
-        f"- 腰围(cm): {val('waistCm')}",
-        f"- 臀围(cm): {val('hipCm')}",
+        f"- \u8eab\u9ad8(cm): {val('heightCm')}",
+        f"- \u4f53\u91cd(kg): {val('weightKg')}",
+        f"- \u80a9\u5bbd(cm): {val('shoulderWidthCm')}",
+        f"- \u80f8\u56f4(cm): {val('chestCm')}",
+        f"- \u8170\u56f4(cm): {val('waistCm')}",
+        f"- \u81c0\u56f4(cm): {val('hipCm')}",
     ]
     if missing:
-        lines.append(f"- 说明: 未填写项已按平均体型估算（以照片为准）: {', '.join(missing)}")
+        lines.append(f"- \u8bf4\u660e: \u672a\u586b\u5199\u9879\u5df2\u6309\u5e73\u5747\u4f53\u578b\u4f30\u7b97\uff08\u4ee5\u7167\u7247\u4e3a\u51c6\uff09: {', '.join(missing)}")
     return "\n".join(lines)
 
 
 def avatar_generate_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> str:
-    """
-    数字人基础形象生成（text+image -> image）。
-    注意：
-    - 目标是生成“可试穿”的基础人像（背景干净、衣着简洁、全身可见）
-    - 体型参数用于轻微比例修正，不应强制改形
-    """
     quality_level = (constraints or {}).get("qualityLevel") or "standard"
     body_block = _format_body_params(inputs.get("bodyParams"))
     return "\n".join(
         [
-            "你是一名专业的写实人物图像生成与修图助手。",
-            "",
-            "任务：基于我提供的照片生成一张“数字人基础形象（avatar base）”图片，用于后续虚拟试穿。",
-            "",
-            "硬性要求：",
-            "1) 必须保持人物身份一致：脸部五官、发型发色、肤色尽可能与原图一致；",
-            "2) 输出写实风格，细节清晰，曝光正常；",
-            "3) 背景替换为干净的浅色影棚背景（接近纯色），不要杂物；",
-            "4) 人物必须从头部到鞋子完整可见（头顶与鞋子都不能被裁切），居中展示，全身完整；",
-            "   - 构图需留出足够边距，确保鞋子/脚部完整清晰可见；",
-            "5) 服装尽量简洁贴身（例如纯色上衣+简单长裤），便于后续试穿叠加；",
-            "6) 不要添加文字、水印、边框或额外人物；",
-            "",
-            "体型参数（用于轻微修正比例，不要夸张变形；如未填写请结合照片做合理估计，可参考估算值但以照片为准）：",
+            '\u4f60\u662f\u4e00\u540d\u4e13\u4e1a\u7684\u5199\u5b9e\u4eba\u7269\u56fe\u50cf\u751f\u6210\u4e0e\u4fee\u56fe\u52a9\u624b\u3002',
+            '',
+            '\u4efb\u52a1\uff1a\u57fa\u4e8e\u6211\u63d0\u4f9b\u7684\u7167\u7247\u751f\u6210\u4e00\u5f20\u300c\u6570\u5b57\u4eba\u57fa\u7840\u5f62\u8c61\uff08avatar base\uff09\u300d\u56fe\u7247\uff0c\u7528\u4e8e\u540e\u7eed\u865a\u62df\u8bd5\u7a7f\u3002',
+            '',
+            '\u786c\u6027\u8981\u6c42\uff1a',
+            '1) \u5fc5\u987b\u4fdd\u6301\u4eba\u7269\u8eab\u4efd\u4e00\u81f4\uff1a\u8138\u90e8\u4e94\u5b98\u3001\u53d1\u578b\u53d1\u8272\u3001\u80a4\u8272\u5c3d\u53ef\u80fd\u4e0e\u539f\u56fe\u4e00\u81f4\uff1b',
+            '2) \u8f93\u51fa\u5199\u5b9e\u98ce\u683c\uff0c\u7ec6\u8282\u6e05\u6670\uff0c\u66dd\u5149\u6b63\u5e38\uff1b',
+            '3) \u80cc\u666f\u66ff\u6362\u4e3a\u5e72\u51c0\u7684\u6d45\u8272\u5f71\u68da\u80cc\u666f\uff08\u63a5\u8fd1\u7eaf\u8272\uff09\uff0c\u4e0d\u8981\u6742\u7269\uff1b',
+            '4) \u4eba\u7269\u5fc5\u987b\u4ece\u5934\u90e8\u5230\u978b\u5b50\u5b8c\u6574\u53ef\u89c1\uff08\u5934\u9876\u4e0e\u978b\u5b50\u90fd\u4e0d\u80fd\u88ab\u88c1\u5207\uff09\uff0c\u5c45\u4e2d\u5c55\u793a\uff0c\u5168\u8eab\u5b8c\u6574\uff1b',
+            '5) \u670d\u88c5\u5c3d\u91cf\u7b80\u6d01\u8d34\u8eab\uff08\u4f8b\u5982\u7eaf\u8272\u4e0a\u8863+\u7b80\u5355\u957f\u88e4\uff09\uff0c\u4fbf\u4e8e\u540e\u7eed\u8bd5\u7a7f\u53e0\u52a0\uff1b',
+            '6) \u4e0d\u8981\u6dfb\u52a0\u6587\u5b57\u3001\u6c34\u5370\u3001\u8fb9\u6846\u6216\u989d\u5916\u4eba\u7269\uff1b',
+            '',
+            '\u4f53\u578b\u53c2\u6570\uff08\u7528\u4e8e\u8f7b\u5fae\u4fee\u6b63\u6bd4\u4f8b\uff0c\u4e0d\u8981\u5938\u5f20\u53d8\u5f62\uff1b\u5982\u672a\u586b\u5199\u8bf7\u7ed3\u5408\u7167\u7247\u505a\u5408\u7406\u4f30\u8ba1\uff0c\u53ef\u53c2\u8003\u4f30\u7b97\u503c\u4f46\u4ee5\u7167\u7247\u4e3a\u51c6\uff09\uff1a',
             body_block,
-            "",
-            f"质量等级参考：{quality_level}（尽可能高质量输出，但不要牺牲身份一致性）。",
-            "",
-            "输出格式要求：",
-            "- 必须返回一张图片（不要只返回文字说明）。",
+            '',
+            f'\u8d28\u91cf\u7b49\u7ea7\u53c2\u8003\uff1a{quality_level}\uff08\u5c3d\u53ef\u80fd\u9ad8\u8d28\u91cf\u8f93\u51fa\uff0c\u4f46\u4e0d\u8981\u727a\u7272\u8eab\u4efd\u4e00\u81f4\u6027\uff09\u3002',
+            '',
+            '\u8f93\u51fa\u683c\u5f0f\u8981\u6c42\uff1a',
+            '- \u5fc5\u987b\u8fd4\u56de\u4e00\u5f20\u56fe\u7247\uff08\u4e0d\u8981\u53ea\u8fd4\u56de\u6587\u5b57\u8bf4\u660e\uff09\u3002',
         ]
     )
 
 
 def vton_tryon_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> str:
     quality_level = (constraints or {}).get("qualityLevel") or "standard"
-    pose_id = inputs.get("poseId") or "未指定"
-    garment_category = inputs.get("garmentCategory") or "未指定"
+    garment_category = inputs.get("garmentCategory") or "\u672a\u6307\u5b9a"
     return "\n".join(
         [
-            "你是一名专业的写实人物图像生成与虚拟试衣助手。",
-            "",
-            "任务：基于两张图片生成一张“虚拟试穿（try-on）”图片：",
-            "- 图片 A：人物（avatar）",
-            "- 图片 B：服装单品（garment）",
-            "",
-            "硬性要求：",
-            "1) 必须保持人物身份一致：脸部五官、发型发色、肤色尽可能与图片 A 一致；",
-            f"2) 根据以下姿态提示把人物切换到目标姿态（如果图片 A 的姿态与目标不同，请自由调整身体、四肢到目标姿态）：",
-            f"   - 当前姿态提示：{pose_id}",
-            "   - 身体朝向可参考图片 A，但最终动作必须符合姿态提示；",
-            "3) 必须把图片 B 的服装穿到图片 A 的人物身上：",
-            "   - 保持服装款式、颜色、图案、材质纹理；",
-            "   - 尺寸合身自然，褶皱与光影合理，服装随姿态变化自然变形；",
-            f"   - 服装品类提示：{garment_category}（决定穿戴区域，例如 dress 覆盖上身到腿部、shoes 仅覆盖脚部）",
-            "4) 背景保持干净（浅色影棚背景优先），不要加入文字、水印、边框或其他人物；",
-            "5) 人物必须从头到鞋子完整可见，不能裁切或变形，居中展示，全身完整；",
-            "",
-            f"质量等级参考：{quality_level}（尽可能高质量输出，但不要牺牲身份一致性）。",
-            "",
-            "输出格式要求：",
-            "- 必须返回一张图片（不要只返回文字说明）。",
+            '\u4f60\u662f\u4e00\u540d\u4e13\u4e1a\u7684\u5199\u5b9e\u4eba\u7269\u56fe\u50cf\u751f\u6210\u4e0e\u865a\u62df\u8bd5\u8863\u52a9\u624b\u3002',
+            '',
+            '\u4efb\u52a1\uff1a\u57fa\u4e8e\u4e24\u5f20\u56fe\u7247\u751f\u6210\u4e00\u5f20\u300c\u865a\u62df\u8bd5\u7a7f\uff08try-on\uff09\u300d\u56fe\u7247\uff1a',
+            '- \u56fe\u7247 A\uff1a\u4eba\u7269\uff08avatar\uff0c\u5df2\u5904\u5728\u6b63\u786e\u59ff\u6001\uff09',
+            '- \u56fe\u7247 B\uff1a\u670d\u88c5\u5355\u54c1\uff08garment\uff09',
+            '',
+            '\u786c\u6027\u8981\u6c42\uff1a',
+            '1) \u5fc5\u987b\u4fdd\u6301\u4eba\u7269\u8eab\u4efd\u4e00\u81f4\uff1a\u8138\u90e8\u4e94\u5b98\u3001\u53d1\u578b\u53d1\u8272\u3001\u80a4\u8272\u5c3d\u53ef\u80fd\u4e0e\u56fe\u7247 A \u4e00\u81f4\uff1b',
+            '2) \u4fdd\u6301\u4eba\u7269\u59ff\u6001\u3001\u8eab\u4f53\u671d\u5411\u3001\u80cc\u666f\u4e0e\u56fe\u7247 A \u5b8c\u5168\u4e00\u81f4\uff0c\u4e0d\u8981\u4fee\u6539\uff1b',
+            '3) \u5fc5\u987b\u628a\u56fe\u7247 B \u7684\u670d\u88c5\u7a7f\u5230\u56fe\u7247 A \u7684\u4eba\u7269\u8eab\u4e0a\uff1a',
+            '   - \u4fdd\u6301\u670d\u88c5\u6b3e\u5f0f\u3001\u989c\u8272\u3001\u56fe\u6848\u3001\u6750\u8d28\u7eb9\u7406\uff1b',
+            '   - \u5c3a\u5bf8\u5408\u8eab\u81ea\u7136\uff0c\u8936\u9ecf\u4e0e\u5149\u5f71\u5408\u7406\uff0c\u670d\u88c5\u4e0e\u4eba\u7269\u8eab\u4f53\u81ea\u7136\u8d34\u5408\uff1b',
+            f'   - \u670d\u88c5\u54c1\u7c7b\u63d0\u793a\uff1a{garment_category}\uff08\u51b3\u5b9a\u7a7f\u6234\u533a\u57df\uff0c\u4f8b\u5982 dress \u8986\u76d6\u4e0a\u8eab\u5230\u817f\u90e8\u3001shoes \u4ec5\u8986\u76d6\u811a\u90e8\uff09',
+            '4) \u80cc\u666f\u4fdd\u6301\u5e72\u51c0\uff08\u6d45\u8272\u5f71\u68da\u80cc\u666f\u4f18\u5148\uff09\uff0c\u4e0d\u8981\u52a0\u5165\u6587\u5b57\u3001\u6c34\u5370\u3001\u8fb9\u6846\u6216\u5176\u4ed6\u4eba\u7269\uff1b',
+            '5) \u4eba\u7269\u5fc5\u987b\u4ece\u5934\u5230\u978b\u5b50\u5b8c\u6574\u53ef\u89c1\uff0c\u4e0d\u80fd\u88c1\u5207\u6216\u53d8\u5f62\uff0c\u5c45\u4e2d\u5c55\u793a\uff0c\u5168\u8eab\u5b8c\u6574\uff1b',
+            '',
+            f'\u8d28\u91cf\u7b49\u7ea7\u53c2\u8003\uff1a{quality_level}\uff08\u5c3d\u53ef\u80fd\u9ad8\u8d28\u91cf\u8f93\u51fa\uff0c\u4f46\u4e0d\u8981\u727a\u7272\u8eab\u4efd\u4e00\u81f4\u6027\uff09\u3002',
+            '',
+            '\u8f93\u51fa\u683c\u5f0f\u8981\u6c42\uff1a',
+            '- \u5fc5\u987b\u8fd4\u56de\u4e00\u5f20\u56fe\u7247\uff08\u4e0d\u8981\u53ea\u8fd4\u56de\u6587\u5b57\u8bf4\u660e\uff09\u3002',
         ]
     )
 
 
 def pose_render_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> str:
     quality_level = (constraints or {}).get("qualityLevel") or "standard"
-    pose_id = inputs.get("poseId") or "未指定"
+    pose_id = inputs.get("poseId") or "\u672a\u6307\u5b9a"
     return "\n".join(
         [
-            "你是一名专业的写实人物图像编辑助手。",
-            "",
-            f"任务：基于我提供的人物照片，把人物切换到以下姿态：",
-            f"   - 目标姿态：{pose_id}",
-            "",
-            "要求：",
-            f"1) 根据姿态提示（{pose_id}）调整人物身体、四肢到对应的动作：",
-            "   - hands_on_hips：双手叉腰",
-            "   - neutral_stand：双手自然垂立，站直",
-            "   - hands_behind_back：双手背在身后",
-            '   - runway_walk：模特走秀迈步。一只脚向前迈出（膝盖微曲、脚尖着地或悬空），另一只脚在后伸直支撑身体；双手自然前后摆动或垂于身侧；肩部放松下沉，下巴微抬，目视前方（自信眼神）；身体重心略前倾，有动态感。不要简单理解为"走路"，要像时装周 T 台上专业模特的标志性台步——跨步大、节奏强、有气场，身体转胯带动步伐，每一步都有"踩点"的力量感。',
-            "   - casual_sit：自然坐在椅子上",
-            "   - side_stand：侧身站立",
-            "2) 必须保持人物身份一致：脸部五官、发型发色、肤色尽可能与原图一致；",
-            "3) 输出写实风格，细节清晰，不要变形；",
-            "4) 背景保持与原图一致，不要自行修改背景或添加额外元素；",
-            "5) 人物必须从头到鞋子完整可见（头顶与鞋子都不能被裁切），全身完整居中展示；",
-            "6) 服装款式、颜色、材质保持与原图一致，随姿态自然变形；",
-            "7) 不要添加文字、水印、边框或额外人物；",
-            "",
-            f"质量等级参考：{quality_level}（尽可能高质量输出，但不要牺牲身份一致性）。",
-            "",
-            "输出格式要求：",
-            "- 必须返回一张图片（不要只返回文字说明）。",
+            '\u4f60\u662f\u4e00\u540d\u4e13\u4e1a\u7684\u5199\u5b9e\u4eba\u7269\u56fe\u50cf\u7f16\u8f91\u52a9\u624b\u3002',
+            '',
+            '\u4efb\u52a1\uff1a\u57fa\u4e8e\u6211\u63d0\u4f9b\u7684\u4eba\u7269\u7167\u7247\uff0c\u628a\u4eba\u7269\u5207\u6362\u5230\u4ee5\u4e0b\u59ff\u6001\uff1a',
+            f'   - \u76ee\u6807\u59ff\u6001\uff1a{pose_id}',
+            '',
+            '\u8981\u6c42\uff1a',
+            f'1) \u6839\u636e\u59ff\u6001\u63d0\u793a\uff08{pose_id}\uff09\u8c03\u6574\u4eba\u7269\u8eab\u4f53\u3001\u56db\u80a2\u5230\u5bf9\u5e94\u7684\u52a8\u4f5c\uff1a',
+            '   - hands_on_hips\uff1a\u53cc\u624b\u53c9\u8170',
+            '   - neutral_stand\uff1a\u53cc\u624b\u81ea\u7136\u5782\u7acb\uff0c\u7ad9\u76f4',
+            '   - hands_behind_back\uff1a\u53cc\u624b\u80cc\u5728\u8eab\u540e',
+            '   - runway_walk\uff1a\u6a21\u7279\u8d70\u79c0\u8fc8\u6b65\u3002\u4e00\u53ea\u811a\u5411\u524d\u8fc8\u51fa\uff0c\u53e6\u4e00\u53ea\u811a\u5728\u540e\u652f\u6491\uff1b\u53cc\u624b\u81ea\u7136\u6446\u52a8\uff1b\u80a9\u90e8\u4e0b\u6c89\uff0c\u76ee\u89c6\u524d\u65b9\uff0c\u91cd\u5fc3\u524d\u503e\u6709\u52a8\u6001\u611f',
+            '   - casual_sit\uff1a\u81ea\u7136\u5750\u5728\u6905\u5b50\u4e0a',
+            '   - side_stand\uff1a\u4fa7\u8eab\u7ad9\u7acb',
+            '2) \u5fc5\u987b\u4fdd\u6301\u4eba\u7269\u8eab\u4efd\u4e00\u81f4\uff1a\u8138\u90e8\u4e94\u5b98\u3001\u53d1\u578b\u53d1\u8272\u3001\u80a4\u8272\u5c3d\u53ef\u80fd\u4e0e\u539f\u56fe\u4e00\u81f4\uff1b',
+            '3) \u8f93\u51fa\u5199\u5b9e\u98ce\u683c\uff0c\u7ec6\u8282\u6e05\u6670\uff0c\u4e0d\u8981\u53d8\u5f62\uff1b',
+            '4) \u80cc\u666f\u4fdd\u6301\u4e0e\u539f\u56fe\u4e00\u81f4\uff0c\u4e0d\u8981\u81ea\u884c\u4fee\u6539\u80cc\u666f\u6216\u6dfb\u52a0\u989d\u5916\u5143\u7d20\uff1b',
+            '5) \u4eba\u7269\u5fc5\u987b\u4ece\u5934\u5230\u978b\u5b50\u5b8c\u6574\u53ef\u89c1\uff08\u5934\u9876\u4e0e\u978b\u5b50\u90fd\u4e0d\u80fd\u88ab\u88c1\u5207\uff09\uff0c\u5168\u8eab\u5b8c\u6574\u5c45\u4e2d\u5c55\u793a\uff1b',
+            '6) \u670d\u88c5\u6b3e\u5f0f\u3001\u989c\u8272\u3001\u6750\u8d28\u4fdd\u6301\u4e0e\u539f\u56fe\u4e00\u81f4\uff0c\u968f\u59ff\u6001\u81ea\u7136\u53d8\u5f62\uff1b',
+            '7) \u4e0d\u8981\u6dfb\u52a0\u6587\u5b57\u3001\u6c34\u5370\u3001\u8fb9\u6846\u6216\u989d\u5916\u4eba\u7269\uff1b',
+            '',
+            f'\u8d28\u91cf\u7b49\u7ea7\u53c2\u8003\uff1a{quality_level}\uff08\u5c3d\u53ef\u80fd\u9ad8\u8d28\u91cf\u8f93\u51fa\uff0c\u4f46\u4e0d\u8981\u727a\u7272\u8eab\u4efd\u4e00\u81f4\u6027\uff09\u3002',
+            '',
+            '\u8f93\u51fa\u683c\u5f0f\u8981\u6c42\uff1a',
+            '- \u5fc5\u987b\u8fd4\u56de\u4e00\u5f20\u56fe\u7247\uff08\u4e0d\u8981\u53ea\u8fd4\u56de\u6587\u5b57\u8bf4\u660e\uff09\u3002',
         ]
     )
 
@@ -182,76 +168,64 @@ def build_prompt(*, task: str, inputs: dict[str, Any], constraints: dict[str, An
 
 
 def self_correction_prompt(*, task: str) -> str:
-    """
-    Round 2 自修正 prompt。
-    用于把 Round 1 生成的结果图 + 原始输入图再次发送给 Gemini，
-    让模型自行检查并修复以下典型问题：
-      - 动作不对 / 没切换姿态
-      - 服装缺失 / 贴合错误
-      - 人体裁切 / 畸形（如三条腿）
-      - 身份不一致
-      - 只返回了文字说明
-    注意：这个 prompt 要求返回图片，不要返回文字。
-    """
     task_prompts = {
         "avatar_generate": [
-            "请仔细检查上一步生成的数字人基础形象图片，逐一核对以下项目：",
-            "",
-            "- 完整性检查：人物是否从头到脚、从头部到鞋子全部可见，没有被裁切？",
-            "  → 如有裁切，请在修复图中补全；",
-            "- 身份一致性检查：脸部五官、发型发色、肤色是否与原始照片一致？",
-            "  → 如不一致，请以原始照片为准修正；",
-            "- 背景检查：背景是否为干净的浅色影棚风格？",
-            "  → 如有复杂背景或杂物，请替换为纯色背景；",
-            "- 畸形检查：人体比例是否自然，没有多余肢体、变形或错位？",
-            "  → 如有畸形（如三条腿、手臂错位），请修复为正常人体；",
-            "- 文字检查：图中是否有文字、水印或边框？",
-            "  → 如有，请彻底移除。",
-            "",
-            "输出格式要求：",
-            "- 如果上一步结果已完美满足所有条件，请保持原结果返回。",
-            "- 如果存在问题，请生成一张修复后的图片。",
-            "- 必须返回图片，不要只返回文字说明。",
+            '\u8bf7\u4ed4\u7ec6\u68c0\u67e5\u4e0a\u4e00\u6b65\u751f\u6210\u7684\u6570\u5b57\u4eba\u57fa\u7840\u5f62\u8c61\u56fe\u7247\uff0c\u9010\u4e00\u6838\u5bf9\u4ee5\u4e0b\u9879\u76ee\uff1a',
+            '',
+            '- \u5b8c\u6574\u6027\u68c0\u67e5\uff1a\u4eba\u7269\u662f\u5426\u4ece\u5934\u5230\u811a\u3001\u4ece\u5934\u90e8\u5230\u978b\u5b50\u5168\u90e8\u53ef\u89c1\uff0c\u6ca1\u6709\u88ab\u88c1\u5207\uff1f',
+            '  -> \u5982\u6709\u88c1\u5207\uff0c\u8bf7\u5728\u4fee\u590d\u56fe\u4e2d\u8865\u5168\uff1b',
+            '- \u8eab\u4efd\u4e00\u81f4\u6027\u68c0\u67e5\uff1a\u8138\u90e8\u4e94\u5b98\u3001\u53d1\u578b\u53d1\u8272\u3001\u80a4\u8272\u662f\u5426\u4e0e\u539f\u59cb\u7167\u7247\u4e00\u81f4\uff1f',
+            '  -> \u5982\u4e0d\u4e00\u81f4\uff0c\u8bf7\u4ee5\u539f\u59cb\u7167\u7247\u4e3a\u51c6\u4fee\u6b63\uff1b',
+            '- \u80cc\u666f\u68c0\u67e5\uff1a\u80cc\u666f\u662f\u5426\u4e3a\u5e72\u51c0\u7684\u6d45\u8272\u5f71\u68da\u98ce\u683c\uff1f',
+            '  -> \u5982\u6709\u590d\u6742\u80cc\u666f\u6216\u6742\u7269\uff0c\u8bf7\u66ff\u6362\u4e3a\u7eaf\u8272\u80cc\u666f\uff1b',
+            '- \u7578\u5f62\u68c0\u67e5\uff1a\u4eba\u4f53\u6bd4\u4f8b\u662f\u5426\u81ea\u7136\uff0c\u6ca1\u6709\u591a\u4f59\u80a2\u4f53\u3001\u53d8\u5f62\u6216\u9519\u4f4d\uff1f',
+            '  -> \u5982\u6709\u7578\u5f62\uff08\u5982\u4e09\u6761\u817f\u3001\u624b\u81c2\u9519\u4f4d\uff09\uff0c\u8bf7\u4fee\u590d\u4e3a\u6b63\u5e38\u4eba\u4f53\uff1b',
+            '- \u6587\u5b57\u68c0\u67e5\uff1a\u56fe\u4e2d\u662f\u5426\u6709\u6587\u5b57\u3001\u6c34\u5370\u6216\u8fb9\u6846\uff1f',
+            '  -> \u5982\u6709\uff0c\u8bf7\u5f7b\u5e95\u79fb\u9664\u3002',
+            '',
+            '\u8f93\u51fa\u683c\u5f0f\u8981\u6c42\uff1a',
+            '- \u5982\u679c\u4e0a\u4e00\u6b65\u7ed3\u679c\u5df2\u5b8c\u7f8e\u6ee1\u8db3\u6240\u6709\u6761\u4ef6\uff0c\u8bf7\u4fdd\u6301\u539f\u7ed3\u679c\u8fd4\u56de\u3002',
+            '- \u5982\u679c\u5b58\u5728\u95ee\u9898\uff0c\u8bf7\u751f\u6210\u4e00\u5f20\u4fee\u590d\u540e\u7684\u56fe\u7247\u3002',
+            '- \u5fc5\u987b\u8fd4\u56de\u56fe\u7247\uff0c\u4e0d\u8981\u53ea\u8fd4\u56de\u6587\u5b57\u8bf4\u660e\u3002',
         ],
         "pose_render": [
-            "请仔细检查上一步生成的姿态切换图片，逐一核对以下项目：",
-            "",
-            "- 姿态检查：人物动作是否已切换到目标姿态？",
-            "  → 如果人物仍保持原姿态未改变，请按目标姿态调整四肢和身体；",
-            "  → 如果是 runway_walk（T台）：确保一只脚明显向前迈出、另一只脚在后支撑，有动态跨步感；双手自然摆动或垂于身侧；身体略前倾、下巴微抬、目视前方，有走秀气场，而非简单的站立或行走；",
-            "- 完整性检查：人物是否从头到脚完整可见，没有被裁切？",
-            "  → 如有裁切请补全；",
-            "- 身份一致性检查：脸部五官、发型、肤色是否与原始照片一致？",
-            "  → 如不一致请以原始照片为准修正；",
-            "- 畸形检查：人体比例是否自然，没有多余肢体或错位？",
-            "  → 如有畸形（如三条腿、多只手臂等），请修复为正常人体；",
-            "- 服装检查：服装款式、颜色是否与原图一致，随姿态自然变形？",
-            "",
-            "输出格式要求：",
-            "- 如果上一步结果已完美满足所有条件，请保持原结果返回。",
-            "- 如果存在问题，请生成一张修复后的图片。",
-            "- 必须返回图片，不要只返回文字说明。",
+            '\u8bf7\u4ed4\u7ec6\u68c0\u67e5\u4e0a\u4e00\u6b65\u751f\u6210\u7684\u59ff\u6001\u5207\u6362\u56fe\u7247\uff0c\u9010\u4e00\u6838\u5bf9\u4ee5\u4e0b\u9879\u76ee\uff1a',
+            '',
+            '- \u59ff\u6001\u68c0\u67e5\uff1a\u4eba\u7269\u52a8\u4f5c\u662f\u5426\u5df2\u5207\u6362\u5230\u76ee\u6807\u59ff\u6001\uff1f',
+            '  -> \u5982\u679c\u4eba\u7269\u4ecd\u4fdd\u6301\u539f\u59ff\u6001\u672a\u6539\u53d8\uff0c\u8bf7\u6309\u76ee\u6807\u59ff\u6001\u8c03\u6574\u56db\u80a2\u548c\u8eab\u4f53\uff1b',
+            '  -> \u5982\u679c\u662f runway_walk\uff08T\u53f0\uff09\uff1a\u786e\u4fdd\u4e00\u53ea\u811a\u5411\u524d\u8de8\u51fa\u3001\u6709\u52a8\u6001\u611f\uff0c\u975e\u7b80\u5355\u7ad9\u7acb\uff1b',
+            '- \u5b8c\u6574\u6027\u68c0\u67e5\uff1a\u4eba\u7269\u662f\u5426\u4ece\u5934\u5230\u811a\u5b8c\u6574\u53ef\u89c1\uff0c\u6ca1\u6709\u88ab\u88c1\u5207\uff1f',
+            '  -> \u5982\u6709\u88c1\u5207\u8bf7\u8865\u5168\uff1b',
+            '- \u8eab\u4efd\u4e00\u81f4\u6027\u68c0\u67e5\uff1a\u8138\u90e8\u4e94\u5b98\u3001\u53d1\u578b\u3001\u80a4\u8272\u662f\u5426\u4e0e\u539f\u59cb\u7167\u7247\u4e00\u81f4\uff1f',
+            '  -> \u5982\u4e0d\u4e00\u81f4\u8bf7\u4ee5\u539f\u59cb\u7167\u7247\u4e3a\u51c6\u4fee\u6b63\uff1b',
+            '- \u7578\u5f62\u68c0\u67e5\uff1a\u4eba\u4f53\u6bd4\u4f8b\u662f\u5426\u81ea\u7136\uff0c\u6ca1\u6709\u591a\u4f59\u80a2\u4f53\u6216\u9519\u4f4d\uff1f',
+            '  -> \u5982\u6709\u7578\u5f62\uff08\u5982\u4e09\u6761\u817f\u3001\u591a\u53ea\u624b\u81c2\u7b49\uff09\uff0c\u8bf7\u4fee\u590d\u4e3a\u6b63\u5e38\u4eba\u4f53\uff1b',
+            '- \u670d\u88c5\u68c0\u67e5\uff1a\u670d\u88c5\u6b3e\u5f0f\u3001\u989c\u8272\u662f\u5426\u4e0e\u539f\u56fe\u4e00\u81f4\uff0c\u968f\u59ff\u6001\u81ea\u7136\u53d8\u5f62\uff1f',
+            '',
+            '\u8f93\u51fa\u683c\u5f0f\u8981\u6c42\uff1a',
+            '- \u5982\u679c\u4e0a\u4e00\u6b65\u7ed3\u679c\u5df2\u5b8c\u7f8e\u6ee1\u8db3\u6240\u6709\u6761\u4ef6\uff0c\u8bf7\u4fdd\u6301\u539f\u7ed3\u679c\u8fd4\u56de\u3002',
+            '- \u5982\u679c\u5b58\u5728\u95ee\u9898\uff0c\u8bf7\u751f\u6210\u4e00\u5f20\u4fee\u590d\u540e\u7684\u56fe\u7247\u3002',
+            '- \u5fc5\u987b\u8fd4\u56de\u56fe\u7247\uff0c\u4e0d\u8981\u53ea\u8fd4\u56de\u6587\u5b57\u8bf4\u660e\u3002',
         ],
         "vton_tryon": [
-            "请仔细检查上一步生成的虚拟试穿图片，逐一核对以下项目：",
-            "",
-            "- 服装检查：目标服装是否已穿到人物身上？",
-            "  → 如果服装缺失或未穿上，请将目标服装正确穿到人物身上；",
-            "- 服装贴合检查：服装是否合身、褶皱与光影是否自然？",
-            "  → 如有明显不贴合（过大/过小/悬空），请修正；",
-            "- 身份一致性检查：脸部五官、发型、肤色是否与原始人物一致？",
-            "  → 如不一致请以人物原始照片为准修正；",
-            "- 姿态检查：人物动作是否符合姿态提示？",
-            "  → 如有偏差请修正为正确姿态；",
-            "  → 如果是 runway_walk（T台）：确保有跨步感，非简单站立；",
-            "- 完整性检查：人物是否从头到脚完整可见，没有裁切或多余肢体？",
-            "  → 如有畸形或裁切请修复；",
-            "- 背景检查：背景是否为干净的浅色风格，没有多余元素？",
-            "",
-            "输出格式要求：",
-            "- 如果上一步结果已完美满足所有条件，请保持原结果返回。",
-            "- 如果存在问题，请生成一张修复后的图片。",
-            "- 必须返回图片，不要只返回文字说明。",
+            '\u8bf7\u4ed4\u7ec6\u68c0\u67e5\u4e0a\u4e00\u6b65\u751f\u6210\u7684\u865a\u62df\u8bd5\u7a7f\u56fe\u7247\uff0c\u9010\u4e00\u6838\u5bf9\u4ee5\u4e0b\u9879\u76ee\uff1a',
+            '',
+            '- \u670d\u88c5\u68c0\u67e5\uff1a\u76ee\u6807\u670d\u88c5\u662f\u5426\u5df2\u7a7f\u5230\u4eba\u7269\u8eab\u4e0a\uff1f',
+            '  -> \u5982\u679c\u670d\u88c5\u7f3a\u5931\u6216\u672a\u7a7f\u4e0a\uff0c\u8bf7\u5c06\u76ee\u6807\u670d\u88c5\u6b63\u786e\u7a7f\u5230\u4eba\u7269\u8eab\u4e0a\uff1b',
+            '- \u670d\u88c5\u8d34\u5408\u68c0\u67e5\uff1a\u670d\u88c5\u662f\u5426\u5408\u8eab\u3001\u8936\u9ecf\u4e0e\u5149\u5f71\u662f\u5426\u81ea\u7136\uff1f',
+            '  -> \u5982\u6709\u660e\u663e\u4e0d\u8d34\u5408\uff08\u8fc7\u5927/\u8fc7\u5c0f/\u60ac\u7a7a\uff09\uff0c\u8bf7\u4fee\u6b63\uff1b',
+            '- \u8eab\u4efd\u4e00\u81f4\u6027\u68c0\u67e5\uff1a\u8138\u90e8\u4e94\u5b98\u3001\u53d1\u578b\u3001\u80a4\u8272\u662f\u5426\u4e0e\u539f\u59cb\u4eba\u7269\u4e00\u81f4\uff1f',
+            '  -> \u5982\u4e0d\u4e00\u81f4\u8bf7\u4ee5\u4eba\u7269\u539f\u59cb\u7167\u7247\u4e3a\u51c6\u4fee\u6b63\uff1b',
+            '- \u59ff\u6001\u68c0\u67e5\uff1a\u4eba\u7269\u59ff\u6001\u662f\u5426\u4e0e\u8f93\u5165\u7684\u4eba\u7269\u56fe\u7247 A \u5b8c\u5168\u4e00\u81f4\uff1f',
+            '  -> \u5fc5\u987b\u4e25\u683c\u4fdd\u6301\u59ff\u6001\u4e0d\u53d8\uff0c\u4e0d\u8981\u6539\u53d8\u4eba\u7269\u52a8\u4f5c\uff1b',
+            '- \u5b8c\u6574\u6027\u68c0\u67e5\uff1a\u4eba\u7269\u662f\u5426\u4ece\u5934\u5230\u811a\u5b8c\u6574\u53ef\u89c1\uff0c\u6ca1\u6709\u88c1\u5207\u6216\u591a\u4f59\u80a2\u4f53\uff1f',
+            '  -> \u5982\u6709\u7578\u5f62\u6216\u88c1\u5207\u8bf7\u4fee\u590d\uff1b',
+            '- \u80cc\u666f\u68c0\u67e5\uff1a\u80cc\u666f\u662f\u5426\u4e3a\u5e72\u51c0\u7684\u6d45\u8272\u98ce\u683c\uff0c\u6ca1\u6709\u591a\u4f59\u5143\u7d20\uff1f',
+            '',
+            '\u8f93\u51fa\u683c\u5f0f\u8981\u6c42\uff1a',
+            '- \u5982\u679c\u4e0a\u4e00\u6b65\u7ed3\u679c\u5df2\u5b8c\u7f8e\u6ee1\u8db3\u6240\u6709\u6761\u4ef6\uff0c\u8bf7\u4fdd\u6301\u539f\u7ed3\u679c\u8fd4\u56de\u3002',
+            '- \u5982\u679c\u5b58\u5728\u95ee\u9898\uff0c\u8bf7\u751f\u6210\u4e00\u5f20\u4fee\u590d\u540e\u7684\u56fe\u7247\u3002',
+            '- \u5fc5\u987b\u8fd4\u56de\u56fe\u7247\uff0c\u4e0d\u8981\u53ea\u8fd4\u56de\u6587\u5b57\u8bf4\u660e\u3002',
         ],
     }
     lines = task_prompts.get(task, task_prompts["avatar_generate"])

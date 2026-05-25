@@ -69,7 +69,7 @@ class NanobananaProvider:
                 "输入：两张图片。图片A=人物，图片B=服装单品。",
                 "输出：只输出一个 JSON 对象，不要输出任何多余文字。",
                 "",
-                "目标：给出一个"叠加定位方案（overlayTransform）"用于把服装B覆盖到人物A的合理位置。",
+                "目标：给出一个叠加定位方案(overlayTransform)用于把服装B覆盖到人物A的合理位置。",
                 "必须尽量符合物理常识与遮挡关系：衣服在人体前方/后方、袖子位置、腰线、鞋子在脚踝下方等。",
                 "如人物A被裁切、遮挡、姿态特殊，请优先保证位置不怪而不是强行贴合。",
                 "",
@@ -356,7 +356,7 @@ class NanobananaProvider:
             if task not in ("avatar_generate", "pose_render"):
                 return {"imageUrl": image_url, "meta": {"provider": "nanobanana", "mode": "mock", "reason": "task_not_implemented"}}
 
-        timeout = constraints.get("timeoutSec", 60) if constraints else 60
+        timeout = constraints.get("timeoutSec", 180) if constraints else 180
         prompt = build_prompt(task=task, inputs=inputs, constraints=constraints)
         parts: list[dict[str, Any]] = [{"text": prompt}]
         meta: dict[str, Any] = {"provider": "nanobanana", "mode": "remote"}
