@@ -124,16 +124,41 @@ POSE_DESCRIPTIONS: dict[str, str] = {
     'hands_on_hips': '双手叉腰，手肘微曲向外，站直，肩膀放松',
     'neutral_stand': '双手自然垂立于身体两侧，站直，目视前方',
     'hands_behind_back': '双手背在身后，手腕交叠或平行，挺胸站直',
-    'runway_walk': '模特走秀迈步：一只脚向前迈出、膝盖微曲，另一只脚在后伸直支撑；双手自然前后摆动或垂于身侧；肩部下沉，下巴微抬，目视前方，重心略前倾，有动态跨步感',
-    'casual_sit': '自然坐在椅子上，身体放松，双手自然放在大腿或扶手上',
-    'side_stand': '侧身站立，身体转向一侧约45-90度，头部可微转向镜头，双手自然垂于身侧',
+    'runway_walk': '模特走秀迈步：一只脚向前跨出(脚尖朝前)、膝盖轻微弯曲，另一只脚在后伸直支撑；双臂自然摆动或垂于身侧；肩部下沉，下巴微抬，目视前方，重心略前倾，有明显“走秀跨步”的动态感（非站立、非侧身走路）',
+    'casual_sit': '坐姿：人物必须真实坐在椅子/凳子上（椅面/坐垫需要可见）；臀部落座，双腿自然弯曲（膝盖约90度），双脚踩地；上身放松直立或微前倾；双手自然放在大腿上或扶手上（严禁迈步/走路/站立）',
+    'side_stand': '侧身站立：人物身体转向一侧约60-90度（可微转头看向镜头）；双脚稳定站立（不要迈步、不要走路姿态）；双手自然垂于身侧或轻放体侧',
 }
+
+
+def _pose_hard_rules(pose_id: str) -> list[str]:
+    """对容易跑偏的姿态，补充更强的“硬约束”句子，减少模型把动作做成走路/侧走。"""
+    pose_id = str(pose_id or "").strip()
+    if pose_id == "casual_sit":
+        return [
+            "必须是坐姿：人物必须坐在椅子/凳子上（椅子可见），臀部落座，双腿弯曲，双脚踩地。",
+            "严禁生成走路/迈步/站立/半蹲等非坐姿动作。",
+        ]
+    if pose_id == "side_stand":
+        return [
+            "必须是原地侧身站立（稳定站姿），严禁迈步/走路/跨步。",
+        ]
+    if pose_id == "runway_walk":
+        return [
+            "必须有明显跨步：一只脚向前跨出，另一只脚在后支撑；不是站立，也不是原地摆拍。",
+        ]
+    # 其他站姿类：默认禁走路，避免误跑偏为 runway_walk
+    if pose_id in {"hands_on_hips", "neutral_stand", "hands_behind_back"}:
+        return [
+            "必须是原地站立姿势，严禁迈步/走路/跨步。",
+        ]
+    return []
 
 
 def pose_render_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> str:
     quality_level = (constraints or {}).get("qualityLevel") or "standard"
     pose_id = inputs.get("poseId") or '未指定'
     pose_desc = POSE_DESCRIPTIONS.get(pose_id, '请调整到目标姿态')
+    pose_rules = _pose_hard_rules(str(pose_id))
     return "\n".join([
         '你是一名专业的写实人物图像编辑助手。',
         '',
@@ -143,6 +168,7 @@ def pose_render_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | 
         '要求：',
         f'1) 根据以下描述调整人物身体、四肢到目标姿态：',
         f'   {pose_id}：{pose_desc}',
+        *(["", "姿态硬性约束(必须遵守)："] + [f"- {r}" for r in pose_rules] if pose_rules else []),
 
         '2) 必须保持人物身份一致：脸部五官、发型发色、肤色尽可能与原图一致；',
         '3) 输出写实风格，细节清晰，不要变形；',
@@ -179,6 +205,7 @@ def self_correction_prompt(*, task: str, inputs: dict[str, Any] | None = None) -
     inputs = inputs or {}
     pose_id = inputs.get('poseId') or ''
     pose_desc = POSE_DESCRIPTIONS.get(str(pose_id)) if pose_id else ''
+    pose_rules = _pose_hard_rules(str(pose_id)) if pose_id else []
     task_prompts = {
         "avatar_generate": [
             '请仔细检查上一步生成的数字人基础形象图片，逐一核对以下项目：',
@@ -204,7 +231,7 @@ def self_correction_prompt(*, task: str, inputs: dict[str, Any] | None = None) -
             '',
             '- 姿态检查：人物动作是否已切换到目标姿态？',
             '  -> 如果人物仍保持原姿态未改变，请按目标姿态调整四肢和身体；',
-            '  -> 如果是 runway_walk(T台)：确保一只脚向前跨出、有动态感，非简单站立；',
+            *(["  -> " + r for r in pose_rules] if pose_rules else []),
             '- 完整性检查：人物是否从头到脚完整可见，没有被裁切？',
             '  -> 如有裁切请补全；',
             '- 身份一致性检查：脸部五官、发型、肤色是否与原始照片一致？',

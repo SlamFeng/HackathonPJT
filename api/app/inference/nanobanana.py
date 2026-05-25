@@ -249,6 +249,11 @@ class NanobananaProvider:
         prompt = build_prompt(task=task, inputs=inputs, constraints=constraints)
         parts: list[dict[str, Any]] = [{"text": prompt}]
         meta: dict[str, Any] = {"provider": "nanobanana", "mode": "remote"}
+        # 用于排查前后端参数/拼接是否一致（不包含完整 prompt，避免过长）
+        if "poseId" in inputs:
+            meta["poseId"] = inputs.get("poseId")
+        if "garmentCategory" in inputs:
+            meta["garmentCategory"] = inputs.get("garmentCategory")
         original_image_urls: list[str] = []
 
         if task == "vton_tryon":
