@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from ..prompts import build_prompt
+from ..prompts import build_prompt, self_correction_prompt
 from ..settings import settings
 
 
@@ -69,7 +69,7 @@ class NanobananaProvider:
                 "输入：两张图片。图片A=人物，图片B=服装单品。",
                 "输出：只输出一个 JSON 对象，不要输出任何多余文字。",
                 "",
-                "目标：给出一个“叠加定位方案（overlayTransform）”用于把服装B覆盖到人物A的合理位置。",
+                "目标：给出一个"叠加定位方案（overlayTransform）"用于把服装B覆盖到人物A的合理位置。",
                 "必须尽量符合物理常识与遮挡关系：衣服在人体前方/后方、袖子位置、腰线、鞋子在脚踝下方等。",
                 "如人物A被裁切、遮挡、姿态特殊，请优先保证位置不怪而不是强行贴合。",
                 "",
@@ -146,20 +146,12 @@ class NanobananaProvider:
         return {"overlayTransform": overlay, "keypoints": keypoints, "notes": notes}
 
     def _storage_path(self) -> Path:
-        # api/app/inference/nanobanana.py -> parents[2] == api/
         base_dir = Path(__file__).resolve().parents[2]
         storage_path = base_dir / settings.storage_dir
         storage_path.mkdir(parents=True, exist_ok=True)
         return storage_path
 
     async def _read_uploaded_image(self, image_url: str, *, timeout: float = 20) -> tuple[bytes, str]:
-        """
-        前端上传后会拿到形如：
-          - /static/<id>.png
-          - http://localhost:8000/static/<id>.png
-        这里优先把它映射到本地 storage 目录读取 bytes，避免再走 HTTP 回环。
-        """
-        # 允许直接传相对路径
         if image_url.startswith("/static/"):
             name = image_url.removeprefix("/static/").split("?", 1)[0]
             path = self._storage_path() / name
@@ -167,7 +159,6 @@ class NanobananaProvider:
             mime = mimetypes.guess_type(str(path))[0] or "image/png"
             return data, mime
 
-        # 允许传绝对 URL
         if "/static/" in image_url:
             name = image_url.split("/static/", 1)[1].split("?", 1)[0]
             path = self._storage_path() / name
@@ -176,7 +167,6 @@ class NanobananaProvider:
                 mime = mimetypes.guess_type(str(path))[0] or "image/png"
                 return data, mime
 
-        # 最后兜底：去拉取外部 URL（需要对方可访问）
         mime = "image/png"
         try:
             mime = mimetypes.guess_type(image_url)[0] or mime
@@ -199,8 +189,145 @@ class NanobananaProvider:
 
     def _default_endpoint(self) -> str:
         model = settings.nanobanana_model or "gemini-3.1-flash-image-preview"
-        # 文档：POST https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent
         return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+    def _endpoint_for_model(self, model: str) -> str:
+        return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+    @property
+    def _model_fallback_chain(self) -> list[str]:
+        """方案 C: 模型降级兜底链。主线模型失败时自动切到更稳定的 fallback 模型。"""
+        primary = settings.nanobanana_model or "gemini-3.1-flash-image-preview"
+        seen: list[str] = []
+        for m in [primary, "gemini-2.5-flash-image"]:
+            if m not in seen:
+                seen.append(m)
+        return seen
+
+    async def _send_and_extract(
+        self,
+        *,
+        parts: list[dict[str, Any]],
+        timeout: float,
+        modalities: list[str] | None = None,
+        model: str,
+    ) -> tuple[bytes, str]:
+        """发送请求给 Gemini 并提取返回的图片 bytes。集中处理各种异常。"""
+        modalities = modalities or ["TEXT", "IMAGE"]
+        endpoint = self._endpoint_for_model(model)
+        payload = {
+            "contents": [{"parts": parts}],
+            "generationConfig": {"responseModalities": modalities},
+        }
+        headers = {
+            "x-goog-api-key": settings.nanobanana_api_key,
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                resp = await client.post(endpoint, json=payload, headers=headers)
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                detail = ""
+                try:
+                    detail = e.response.text
+                except Exception:
+                    pass
+                raise RuntimeError(f"NanoBanana 请求失败：HTTP {e.response.status_code} - {detail}") from e
+            except httpx.TimeoutException as e:
+                raise RuntimeError(f"NanoBanana 请求超时（timeoutSec={timeout}）") from e
+            except httpx.RequestError as e:
+                raise RuntimeError(f"NanoBanana 网络请求失败：{type(e).__name__}") from e
+
+            data = resp.json()
+
+        candidates = data.get("candidates") or []
+        out_parts = (((candidates[0] if candidates else {}) or {}).get("content") or {}).get("parts") or []
+
+        img_b64: str | None = None
+        out_mime: str | None = None
+        text_out: str | None = None
+
+        for part in out_parts:
+            if not isinstance(part, dict):
+                continue
+            if part.get("text"):
+                text_out = part.get("text")
+            blob = part.get("inlineData") or part.get("inline_data")
+            if isinstance(blob, dict):
+                img_b64 = blob.get("data")
+                out_mime = blob.get("mimeType") or blob.get("mime_type")
+                if img_b64:
+                    break
+
+        if img_b64:
+            return base64.b64decode(img_b64), out_mime or "image/png"
+
+        raise RuntimeError(f"模型 {model} 未返回图片（text={text_out!r}）")
+
+    async def _generate_with_fallback(
+        self,
+        *,
+        parts: list[dict[str, Any]],
+        timeout: float,
+        modalities: list[str] | None = None,
+    ) -> tuple[bytes, str, str]:
+        """方案 C: 按 fallback 链依次尝试模型，直到任意模型返回图片。"""
+        modalities = modalities or ["TEXT", "IMAGE"]
+        last_errors: list[str] = []
+
+        for model in self._model_fallback_chain:
+            try:
+                img_bytes, mime = await self._send_and_extract(
+                    parts=parts, timeout=timeout, modalities=modalities, model=model,
+                )
+                return img_bytes, mime, model
+            except RuntimeError as e:
+                last_errors.append(f"{model}: {str(e)}")
+                continue
+
+        raise RuntimeError(f"所有模型均失败: {'; '.join(last_errors)}")
+
+    async def _self_correction_round(
+        self,
+        *,
+        task: str,
+        original_image_urls: list[str],
+        round1_url: str,
+        original_timeout: float,
+    ) -> tuple[bytes, str, str] | None:
+        """
+        方案 B - Round 2 自修正：
+        把 Round 1 的结果图 + 原始输入图 + 修正 prompt 再次发送给 Gemini，
+        让模型自我检查并修复典型问题（裁切、畸形、服装缺失、纯文本等）。
+        如果自修正失败返回 None，由上层保留 Round 1 结果降级。
+        """
+        try:
+            correction_text = self_correction_prompt(task=task)
+            parts: list[dict[str, Any]] = [{"text": correction_text}]
+
+            r1_bytes, r1_mime = await self._read_uploaded_image(round1_url, timeout=15)
+            parts.append({
+                "inlineData": {"mimeType": r1_mime, "data": base64.b64encode(r1_bytes).decode("utf-8")},
+            })
+
+            for url in original_image_urls:
+                try:
+                    ref_bytes, ref_mime = await self._read_uploaded_image(str(url), timeout=15)
+                    parts.append({
+                        "inlineData": {"mimeType": ref_mime, "data": base64.b64encode(ref_bytes).decode("utf-8")},
+                    })
+                except Exception:
+                    continue
+
+            corr_timeout = max(30.0, original_timeout * 0.6)
+            img_bytes, mime, model = await self._generate_with_fallback(
+                parts=parts, timeout=corr_timeout,
+            )
+            return img_bytes, mime, model
+        except Exception:
+            return None
 
     async def _call(self, *, task: str, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> dict[str, Any]:
         if task == "vton_tryon":
@@ -217,9 +344,7 @@ class NanobananaProvider:
                 return {
                     "imageUrl": avatar_url,
                     "meta": {
-                        "provider": "nanobanana",
-                        "mode": "mock",
-                        "reason": "missing_api_key",
+                        "provider": "nanobanana", "mode": "mock", "reason": "missing_api_key",
                         "overlayGarmentImageUrl": garment_url,
                         "overlayTransform": self._default_overlay_transform(str(garment_category) if garment_category is not None else None),
                     },
@@ -228,15 +353,15 @@ class NanobananaProvider:
             image_url = inputs.get("imageUrl") or inputs.get("avatarImageUrl") or inputs.get("garmentImageUrl")
             if not settings.nanobanana_api_key or not image_url:
                 return {"imageUrl": image_url, "meta": {"provider": "nanobanana", "mode": "mock", "reason": "missing_api_key_or_image"}}
-
             if task not in ("avatar_generate", "pose_render"):
                 return {"imageUrl": image_url, "meta": {"provider": "nanobanana", "mode": "mock", "reason": "task_not_implemented"}}
 
         timeout = constraints.get("timeoutSec", 60) if constraints else 60
-
         prompt = build_prompt(task=task, inputs=inputs, constraints=constraints)
         parts: list[dict[str, Any]] = [{"text": prompt}]
-        meta: dict[str, Any] = {"provider": "nanobanana", "mode": "remote", "model": settings.nanobanana_model}
+        meta: dict[str, Any] = {"provider": "nanobanana", "mode": "remote"}
+        original_image_urls: list[str] = []
+
         if task == "vton_tryon":
             avatar_url = inputs.get("avatarImageUrl")
             garment_url = inputs.get("garmentImageUrl")
@@ -246,12 +371,11 @@ class NanobananaProvider:
                 raise RuntimeError("缺少 avatarImageUrl 或 garmentImageUrl")
             avatar_bytes, avatar_mime = await self._read_uploaded_image(str(avatar_url), timeout=min(20, float(timeout)))
             garment_bytes, garment_mime = await self._read_uploaded_image(str(garment_url), timeout=min(20, float(timeout)))
+            original_image_urls = [str(avatar_url), str(garment_url)]
             try:
                 overlay = await self._predict_vton_overlay(
-                    avatar_bytes=avatar_bytes,
-                    avatar_mime=avatar_mime,
-                    garment_bytes=garment_bytes,
-                    garment_mime=garment_mime,
+                    avatar_bytes=avatar_bytes, avatar_mime=avatar_mime,
+                    garment_bytes=garment_bytes, garment_mime=garment_mime,
                     category=str(garment_category) if garment_category is not None else None,
                     pose_id=str(pose_id) if pose_id is not None else None,
                     timeout=min(30.0, float(timeout)),
@@ -262,91 +386,39 @@ class NanobananaProvider:
             except Exception as e:
                 meta["overlayTransform"] = self._default_overlay_transform(str(garment_category) if garment_category is not None else None)
                 meta["notes"] = f"overlay 预测失败：{type(e).__name__}"
-            parts.append(
-                {
-                    "inlineData": {
-                        "mimeType": avatar_mime,
-                        "data": base64.b64encode(avatar_bytes).decode("utf-8"),
-                    }
-                }
-            )
-            parts.append(
-                {
-                    "inlineData": {
-                        "mimeType": garment_mime,
-                        "data": base64.b64encode(garment_bytes).decode("utf-8"),
-                    }
-                }
-            )
+            parts.append({"inlineData": {"mimeType": avatar_mime, "data": base64.b64encode(avatar_bytes).decode("utf-8")}})
+            parts.append({"inlineData": {"mimeType": garment_mime, "data": base64.b64encode(garment_bytes).decode("utf-8")}})
         else:
             image_url = inputs.get("imageUrl") or inputs.get("avatarImageUrl") or inputs.get("garmentImageUrl")
             if not image_url:
                 raise RuntimeError("缺少输入图片")
             img_bytes, mime = await self._read_uploaded_image(str(image_url), timeout=min(20, float(timeout)))
-            parts.append(
-                {
-                    "inlineData": {
-                        "mimeType": mime,
-                        "data": base64.b64encode(img_bytes).decode("utf-8"),
-                    }
-                }
-            )
+            original_image_urls = [str(image_url)]
+            parts.append({"inlineData": {"mimeType": mime, "data": base64.b64encode(img_bytes).decode("utf-8")}})
 
-        payload = {"contents": [{"parts": parts}], "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]}}
-        endpoint = settings.nanobanana_endpoint or self._default_endpoint()
-        headers = {
-            "x-goog-api-key": settings.nanobanana_api_key,
-            "Content-Type": "application/json",
-        }
+        # ---- Round 1: 带降级兜底生成（方案 C） ----
+        r1_bytes, r1_mime, model_used = await self._generate_with_fallback(parts=parts, timeout=timeout)
+        meta["model"] = model_used
+        r1_url = self._save_generated_image(r1_bytes, r1_mime)
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            try:
-                resp = await client.post(endpoint, json=payload, headers=headers)
-                resp.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                # 把 Gemini 的详细错误信息返回给上层（否则只有“400 Bad Request”不利于排查）
-                detail = ""
-                try:
-                    detail = e.response.text
-                except Exception:
-                    pass
-                raise RuntimeError(f"NanoBanana 请求失败：HTTP {e.response.status_code} - {detail}") from e
-            except httpx.TimeoutException as e:
-                raise RuntimeError(f"NanoBanana 请求超时（timeoutSec={timeout}）") from e
-            except httpx.RequestError as e:
-                # 网络/DNS/SSL 等
-                raise RuntimeError(f"NanoBanana 网络请求失败：{type(e).__name__}") from e
+        # ---- Round 2: 自修正（方案 B，失败不影响最终结果） ----
+        correction = await self._self_correction_round(
+            task=task,
+            original_image_urls=original_image_urls,
+            round1_url=r1_url,
+            original_timeout=timeout,
+        )
 
-            data = resp.json()
-
-            # 从返回 candidates[0].content.parts 中提取图片 inline data
-            candidates = data.get("candidates") or []
-            parts = (((candidates[0] if candidates else {}) or {}).get("content") or {}).get("parts") or []
-            img_b64: str | None = None
-            out_mime: str | None = None
-
-            for part in parts:
-                if not isinstance(part, dict):
-                    continue
-                blob = part.get("inlineData") or part.get("inline_data")
-                if isinstance(blob, dict):
-                    img_b64 = blob.get("data")
-                    out_mime = blob.get("mimeType") or blob.get("mime_type")
-                    if img_b64:
-                        break
-
-            if not img_b64:
-                # 兜底：把文本返回出来便于排查
-                text_out = None
-                for part in parts:
-                    if isinstance(part, dict) and part.get("text"):
-                        text_out = part.get("text")
-                        break
-                raise RuntimeError(f"NanoBanana 未返回图片（text={text_out!r}）")
-
-            out_bytes = base64.b64decode(img_b64)
-            out_url = self._save_generated_image(out_bytes, out_mime)
-            return {"imageUrl": out_url, "meta": meta}
+        if correction is not None:
+            corr_bytes, corr_mime, corr_model = correction
+            final_url = self._save_generated_image(corr_bytes, corr_mime)
+            meta["selfCorrection"] = True
+            meta["selfCorrectionModel"] = corr_model
+            meta["model"] = f"{model_used}->{corr_model}"
+            return {"imageUrl": final_url, "meta": meta}
+        else:
+            meta["selfCorrection"] = False
+            return {"imageUrl": r1_url, "meta": meta}
 
     async def avatar_generate(self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> dict[str, Any]:
         return await self._call(task="avatar_generate", inputs=inputs, constraints=constraints)
