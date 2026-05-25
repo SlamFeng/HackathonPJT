@@ -372,20 +372,8 @@ class NanobananaProvider:
             avatar_bytes, avatar_mime = await self._read_uploaded_image(str(avatar_url), timeout=min(20, float(timeout)))
             garment_bytes, garment_mime = await self._read_uploaded_image(str(garment_url), timeout=min(20, float(timeout)))
             original_image_urls = [str(avatar_url), str(garment_url)]
-            try:
-                overlay = await self._predict_vton_overlay(
-                    avatar_bytes=avatar_bytes, avatar_mime=avatar_mime,
-                    garment_bytes=garment_bytes, garment_mime=garment_mime,
-                    category=str(garment_category) if garment_category is not None else None,
-                    pose_id=str(pose_id) if pose_id is not None else None,
-                    timeout=min(30.0, float(timeout)),
-                )
-                meta["overlayTransform"] = overlay.get("overlayTransform")
-                meta["keypoints"] = overlay.get("keypoints")
-                meta["notes"] = overlay.get("notes")
-            except Exception as e:
-                meta["overlayTransform"] = self._default_overlay_transform(str(garment_category) if garment_category is not None else None)
-                meta["notes"] = f"overlay 预测失败：{type(e).__name__}"
+            meta["overlayTransform"] = self._default_overlay_transform(str(garment_category) if garment_category is not None else None)
+            meta["notes"] = "品类规则定位"
             parts.append({"inlineData": {"mimeType": avatar_mime, "data": base64.b64encode(avatar_bytes).decode("utf-8")}})
             parts.append({"inlineData": {"mimeType": garment_mime, "data": base64.b64encode(garment_bytes).decode("utf-8")}})
         else:
