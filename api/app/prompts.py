@@ -113,9 +113,20 @@ def vton_tryon_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | N
     ])
 
 
+POSE_DESCRIPTIONS: dict[str, str] = {
+    'hands_on_hips': '双手叉腰，手肘微曲向外，站直，肩膀放松',
+    'neutral_stand': '双手自然垂立于身体两侧，站直，目视前方',
+    'hands_behind_back': '双手背在身后，手腕交叠或平行，挺胸站直',
+    'runway_walk': '模特走秀迈步：一只脚向前迈出、膝盖微曲，另一只脚在后伸直支撑；双手自然前后摆动或垂于身侧；肩部下沉，下巴微抬，目视前方，重心略前倾，有动态跨步感',
+    'casual_sit': '自然坐在椅子上，身体放松，双手自然放在大腿或扶手上',
+    'side_stand': '侧身站立，身体转向一侧约45-90度，头部可微转向镜头，双手自然垂于身侧',
+}
+
+
 def pose_render_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> str:
     quality_level = (constraints or {}).get("qualityLevel") or "standard"
     pose_id = inputs.get("poseId") or '未指定'
+    pose_desc = POSE_DESCRIPTIONS.get(pose_id, '请调整到目标姿态')
     return "\n".join([
         '你是一名专业的写实人物图像编辑助手。',
         '',
@@ -123,13 +134,9 @@ def pose_render_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | 
         f'   - 目标姿态：{pose_id}',
         '',
         '要求：',
-        f'1) 根据姿态提示({pose_id})调整人物身体、四肢到对应的动作：',
-        '   - hands_on_hips：双手叉腰',
-        '   - neutral_stand：双手自然垂立，站直',
-        '   - hands_behind_back：双手背在身后',
-        '   - runway_walk：模特走秀迈步。一只脚向前迈出，另一只脚在后支撑；双手自然摆动；肩部下沉，目视前方，重心前倾有动态感',
-        '   - casual_sit：自然坐在椅子上',
-        '   - side_stand：侧身站立',
+        f'1) 根据以下描述调整人物身体、四肢到目标姿态：',
+        f'   {pose_id}：{pose_desc}',
+
         '2) 必须保持人物身份一致：脸部五官、发型发色、肤色尽可能与原图一致；',
         '3) 输出写实风格，细节清晰，不要变形；',
         '4) 背景保持与原图一致，不要自行修改背景或添加额外元素；',
