@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import mimetypes
+import struct
 import uuid
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,34 @@ from ..settings import settings
 
 
 class NanobananaProvider:
+    @staticmethod
+    def _get_image_dims(data: bytes) -> tuple[int, int] | None:
+        """从图片二进制数据中解析宽高（支持PNG和JPEG）。"""
+        if len(data) < 24:
+            return None
+        # PNG
+        if data[:8] == b'\x89PNG\r\n\x1a\n':
+            w, h = struct.unpack('>II', data[16:24])
+            return w, h
+        # JPEG
+        if data[:2] == b'\xff\xd8':
+            i = 2
+            while i < len(data) - 1:
+                if data[i] != 0xff:
+                    break
+                marker = data[i+1]
+                if marker in (0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0xd8, 0x01):
+                    i += 2
+                    continue
+                if marker == 0xd9:  # EOI
+                    break
+                length = struct.unpack('>H', data[i+2:i+4])[0]
+                if marker == 0xc0 or marker == 0xc1 or marker == 0xc2:
+                    h, w = struct.unpack('>HH', data[i+5:i+9])
+                    return w, h
+                i += 2 + length
+        return None
+
     def _default_overlay_transform(self, category: str | None) -> dict[str, Any]:
         c = (category or "").lower()
         if c == "top":
@@ -254,6 +283,30 @@ class NanobananaProvider:
                 return {"imageUrl": image_url, "meta": {"provider": "nanobanana", "mode": "mock", "reason": "task_not_implemented"}}
 
         timeout = constraints.get("timeoutSec", 180) if constraints else 180
+
+        # ====== 注入输入图片的实际分辨率，用于精确提示模型保持画幅尺寸 ======
+        if task == "vton_tryon":
+            avt_url = inputs.get("avatarImageUrl") or inputs.get("imageUrl")
+            if avt_url:
+                avt_bytes, _ = await self._read_uploaded_image(str(avt_url), timeout=15)
+                dims = self._get_image_dims(avt_bytes)
+                if dims:
+                    w, h = dims
+                    inputs = dict(inputs)  # copy to avoid mutating original
+                    inputs["_avatarWidth"] = w
+                    inputs["_avatarHeight"] = h
+                    print(f"[DIMS] avatar image: {w}x{h}", flush=True)
+        else:
+            img_url = inputs.get("imageUrl") or inputs.get("avatarImageUrl")
+            if img_url:
+                try:
+                    img_bytes, _ = await self._read_uploaded_image(str(img_url), timeout=15)
+                    dims = self._get_image_dims(img_bytes)
+                    if dims:
+                        print(f"[DIMS] input image: {dims[0]}x{dims[1]}", flush=True)
+                except Exception:
+                    pass
+
         prompt = build_prompt(task=task, inputs=inputs, constraints=constraints)
         # ====== 调试日志：打印完整 Round 1 prompt ======
         separator = "=" * 40

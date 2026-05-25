@@ -92,6 +92,10 @@ def vton_tryon_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | N
     pose_id = inputs.get("poseId") or '未指定'
     pose_desc = POSE_DESCRIPTIONS.get(str(pose_id))
     pose_context = f'人物当前姿态：{pose_id} - {pose_desc}' if pose_desc else ''
+    # 从 inputs 获取输入图片的实际像素（如果可用），用来在 prompt 中精确指定输出尺寸
+    avatar_w = inputs.get("_avatarWidth")
+    avatar_h = inputs.get("_avatarHeight")
+    dim_hint = f'输出图片必须精确保持 {avatar_w}x{avatar_h} 像素' if (avatar_w and avatar_h) else '输出图片必须与图片 A 的尺寸（宽度和高度像素数）完全相同'
     return "\n".join([
         '你是一个专业的图片编辑工具。下面有两张图片：',
         '- 图片 A：一个人物（已处在目标姿态的全身照）',
@@ -107,18 +111,20 @@ def vton_tryon_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | N
         '',
         '【绝对禁止修改的内容】',
         '2) 人物姿态、身体朝向、手势、头部角度、脸部五官/表情——完全禁止改变。',
-        '3) 背景、光照、画幅构图——完全禁止改变（背景必须与图片 A 完全一致）。',
+        '3) 背景、光照、画幅构图、图片尺寸/宽高比——完全禁止改变。',
+        f'   {dim_hint}。',
         '4) 图片 A 中除了被服装遮挡的部分，其他所有衣服/裤子/鞋子/配饰——禁止改变。',
         '',
         '【姿态保持（最重要）】',
         f'5) {pose_context}',
         '    试穿后的图片，人物的姿态、手的位置、脚的位置、头部角度必须与图片 A 完全一致，分毫不差。',
         '',
-        '【输出要求】',
-        '6) 人物必须从头到脚完整可见，不能裁切或变形。',
-        '7) 只修改服装区域，不改变图片 A 的任何其他内容。',
-        f'8) 质量等级参考：{quality_level}。',
-        '9) 必须返回一张图片，不要只返回文字说明。',
+        '【画幅与尺寸保持（极重要）】',
+        f'6) {dim_hint}，宽高比不能改变。',
+        '7) 人物必须从头到脚完整可见，不能裁切或变形。',
+        '8) 只修改服装区域，不改变图片 A 的任何其他内容。',
+        f'9) 质量等级参考：{quality_level}。',
+        '10) 必须返回一张图片，不要只返回文字说明。',
     ])
 
 
@@ -254,6 +260,8 @@ def self_correction_prompt(*, task: str, inputs: dict[str, Any] | None = None) -
             '  -> 如果服装缺失或人物仍穿着原服装，请把目标服装正确穿上；',
             '- 姿势检查：人物姿态、身体朝向、手势、头部角度是否与图片 A 完全一致？',
             '  -> 如果有任何变化(包括手脚位置、头部角度、身体朝向)，请还原为与图片 A 一模一样；',
+            '- 画幅检查：输出图片的尺寸（宽高比）是否与图片 A 完全相同？',
+            '  -> 如果宽高比改变了，请裁切/填充回与图片 A 完全相同的尺寸；',
             '- 背景检查：背景、光照是否与图片 A 一致？没有多余元素？',
             '  -> 如果背景变了，请还原为与图片 A 完全相同；',
             '- 身份一致性检查：脸部五官、发型、肤色是否与原始人物一致？',
