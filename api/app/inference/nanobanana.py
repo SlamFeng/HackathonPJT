@@ -194,6 +194,14 @@ class NanobananaProvider:
         """
         try:
             correction_text = self_correction_prompt(task=task, inputs=inputs)
+            # ====== 调试日志：打印完整 Round 2 自修正 prompt ======
+            sep = "=" * 40
+            print(f"\n{sep}")
+            print(f"[ROUND2 SELF-CORRECTION] task={task}  poseId={inputs.get('poseId','?') if inputs else '?'}")
+            print(f"{sep}")
+            print(correction_text)
+            print(f"{sep}\n", flush=True)
+
             parts: list[dict[str, Any]] = [{"text": correction_text}]
 
             r1_bytes, r1_mime = await self._read_uploaded_image(round1_url, timeout=15)
@@ -247,6 +255,14 @@ class NanobananaProvider:
 
         timeout = constraints.get("timeoutSec", 180) if constraints else 180
         prompt = build_prompt(task=task, inputs=inputs, constraints=constraints)
+        # ====== 调试日志：打印完整 Round 1 prompt ======
+        separator = "=" * 40
+        print(f"\n{separator}")
+        print(f"[ROUND1 PROMPT] task={task}  poseId={inputs.get('poseId','?')}")
+        print(f"{separator}")
+        print(prompt)
+        print(f"{separator}\n", flush=True)
+
         parts: list[dict[str, Any]] = [{"text": prompt}]
         meta: dict[str, Any] = {"provider": "nanobanana", "mode": "remote"}
         # 用于排查前后端参数/拼接是否一致（不包含完整 prompt，避免过长）
