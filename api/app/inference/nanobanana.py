@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import mimetypes
 import uuid
 from pathlib import Path
@@ -33,117 +32,6 @@ class NanobananaProvider:
         if c == "shoes":
             return {"cx": 0.5, "cy": 0.88, "w": 0.50, "rotationDeg": 0, "opacity": 0.85, "blendMode": "multiply"}
         return {"cx": 0.5, "cy": 0.50, "w": 0.70, "rotationDeg": 0, "opacity": 0.85, "blendMode": "multiply"}
-
-    def _extract_json_obj(self, text: str) -> dict[str, Any] | None:
-        s = text.strip()
-        if not s:
-            return None
-        start = s.find("{")
-        end = s.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            return None
-        blob = s[start : end + 1]
-        try:
-            obj = json.loads(blob)
-            return obj if isinstance(obj, dict) else None
-        except Exception:
-            return None
-
-    async def _predict_vton_overlay(
-        self,
-        *,
-        avatar_bytes: bytes,
-        avatar_mime: str,
-        garment_bytes: bytes,
-        garment_mime: str,
-        category: str | None,
-        pose_id: str | None,
-        timeout: float,
-    ) -> dict[str, Any]:
-        endpoint = settings.nanobanana_endpoint or self._default_endpoint()
-        headers = {"x-goog-api-key": settings.nanobanana_api_key, "Content-Type": "application/json"}
-
-        prompt = "\n".join(
-            [
-                "你是专业的人体结构识别与虚拟试穿定位助手。",
-                "输入：两张图片。图片A=人物，图片B=服装单品。",
-                "输出：只输出一个 JSON 对象，不要输出任何多余文字。",
-                "",
-                "目标：给出一个叠加定位方案(overlayTransform)用于把服装B覆盖到人物A的合理位置。",
-                "必须尽量符合物理常识与遮挡关系：衣服在人体前方/后方、袖子位置、腰线、鞋子在脚踝下方等。",
-                "如人物A被裁切、遮挡、姿态特殊，请优先保证位置不怪而不是强行贴合。",
-                "",
-                f"服装品类: {category or 'unknown'}",
-                f"姿态提示: {pose_id or 'unknown'}",
-                "",
-                "JSON schema（所有坐标均为人物图片A的归一化比例 0~1）：",
-                "{",
-                '  "overlayTransform": { "cx": 0.5, "cy": 0.5, "w": 0.7, "rotationDeg": 0, "opacity": 0.85, "blendMode": "multiply" },',
-                '  "keypoints": { "leftShoulder": [0.0,0.0], "rightShoulder": [0.0,0.0], "waist": [0.0,0.0], "leftAnkle": [0.0,0.0], "rightAnkle": [0.0,0.0] },',
-                '  "notes": "一句话解释定位逻辑与遮挡考虑"',
-                "}",
-            ]
-        )
-
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": prompt},
-                        {"inlineData": {"mimeType": avatar_mime, "data": base64.b64encode(avatar_bytes).decode("utf-8")}},
-                        {"inlineData": {"mimeType": garment_mime, "data": base64.b64encode(garment_bytes).decode("utf-8")}},
-                    ]
-                }
-            ],
-            "generationConfig": {"responseModalities": ["TEXT"]},
-        }
-
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(endpoint, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-
-        candidates = data.get("candidates") or []
-        parts = (((candidates[0] if candidates else {}) or {}).get("content") or {}).get("parts") or []
-        texts: list[str] = []
-        for part in parts:
-            if isinstance(part, dict) and isinstance(part.get("text"), str):
-                texts.append(part["text"])
-        obj = self._extract_json_obj("\n".join(texts))
-        if not obj:
-            return {
-                "overlayTransform": self._default_overlay_transform(category),
-                "keypoints": None,
-                "notes": "模型未返回可解析 JSON，使用规则估算",
-            }
-
-        overlay = obj.get("overlayTransform")
-        if not isinstance(overlay, dict):
-            overlay = self._default_overlay_transform(category)
-        else:
-            try:
-                cx = float(overlay.get("cx", 0.5))
-                cy = float(overlay.get("cy", 0.5))
-                w = float(overlay.get("w", 0.7))
-                rot = float(overlay.get("rotationDeg", 0))
-                opacity = float(overlay.get("opacity", 0.85))
-                blend = overlay.get("blendMode", "multiply")
-                if not isinstance(blend, str):
-                    blend = "multiply"
-                overlay = {
-                    "cx": max(0.0, min(1.0, cx)),
-                    "cy": max(0.0, min(1.0, cy)),
-                    "w": max(0.15, min(0.95, w)),
-                    "rotationDeg": max(-25.0, min(25.0, rot)),
-                    "opacity": max(0.15, min(1.0, opacity)),
-                    "blendMode": blend,
-                }
-            except Exception:
-                overlay = self._default_overlay_transform(category)
-
-        keypoints = obj.get("keypoints") if isinstance(obj.get("keypoints"), dict) else None
-        notes = obj.get("notes") if isinstance(obj.get("notes"), str) else None
-        return {"overlayTransform": overlay, "keypoints": keypoints, "notes": notes}
 
     def _storage_path(self) -> Path:
         base_dir = Path(__file__).resolve().parents[2]
