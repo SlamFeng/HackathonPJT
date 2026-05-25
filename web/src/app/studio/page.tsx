@@ -113,9 +113,10 @@ export default function StudioPage() {
           const out = img?.url;
           if (!out) throw new Error("未返回试穿图");
           const meta = (img?.meta ?? {}) as Record<string, unknown>;
-          const overlay = typeof meta.overlayGarmentImageUrl === "string" ? meta.overlayGarmentImageUrl : null;
-          const transformRaw = meta.overlayTransform as unknown;
-          const transform = normalizeOverlayTransform(transformRaw);
+          const isMock = meta.mode === "mock";
+          const overlay = isMock && typeof meta.overlayGarmentImageUrl === "string" ? meta.overlayGarmentImageUrl : null;
+          const transformRaw = isMock ? (meta.overlayTransform as unknown) : null;
+          const transform = isMock ? normalizeOverlayTransform(transformRaw) : null;
           setTryonImageUrl(absUrl(out));
           setTryonOverlayGarmentUrl(overlay ? absUrl(overlay) : null);
           setTryonOverlayTransform(transform);

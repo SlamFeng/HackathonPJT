@@ -346,7 +346,6 @@ class NanobananaProvider:
 
             out_bytes = base64.b64decode(img_b64)
             out_url = self._save_generated_image(out_bytes, out_mime)
-            meta["overlayGarmentImageUrl"] = inputs.get("garmentImageUrl")
             return {"imageUrl": out_url, "meta": meta}
 
     async def avatar_generate(self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> dict[str, Any]:
