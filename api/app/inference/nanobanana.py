@@ -184,6 +184,7 @@ class NanobananaProvider:
         original_image_urls: list[str],
         round1_url: str,
         original_timeout: float,
+        inputs: dict[str, Any] | None = None,
     ) -> tuple[bytes, str, str] | None:
         """
         方案 B - Round 2 自修正：
@@ -192,7 +193,7 @@ class NanobananaProvider:
         如果自修正失败返回 None，由上层保留 Round 1 结果降级。
         """
         try:
-            correction_text = self_correction_prompt(task=task)
+            correction_text = self_correction_prompt(task=task, inputs=inputs)
             parts: list[dict[str, Any]] = [{"text": correction_text}]
 
             r1_bytes, r1_mime = await self._read_uploaded_image(round1_url, timeout=15)
@@ -283,6 +284,7 @@ class NanobananaProvider:
             original_image_urls=original_image_urls,
             round1_url=r1_url,
             original_timeout=timeout,
+            inputs=inputs,
         )
 
         if correction is not None:

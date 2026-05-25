@@ -175,7 +175,10 @@ def build_prompt(*, task: str, inputs: dict[str, Any], constraints: dict[str, An
     return builder(inputs=inputs, constraints=constraints)
 
 
-def self_correction_prompt(*, task: str) -> str:
+def self_correction_prompt(*, task: str, inputs: dict[str, Any] | None = None) -> str:
+    inputs = inputs or {}
+    pose_id = inputs.get('poseId') or ''
+    pose_desc = POSE_DESCRIPTIONS.get(str(pose_id)) if pose_id else ''
     task_prompts = {
         "avatar_generate": [
             '请仔细检查上一步生成的数字人基础形象图片，逐一核对以下项目：',
@@ -197,7 +200,7 @@ def self_correction_prompt(*, task: str) -> str:
             '- 必须返回图片，不要只返回文字说明。',
         ],
         "pose_render": [
-            '请仔细检查上一步生成的姿态切换图片，逐一核对以下项目：',
+            f'请仔细检查上一步生成的姿态切换图片，逐一核对以下项目：目标姿态是 {pose_id}: {pose_desc}',
             '',
             '- 姿态检查：人物动作是否已切换到目标姿态？',
             '  -> 如果人物仍保持原姿态未改变，请按目标姿态调整四肢和身体；',
@@ -216,7 +219,7 @@ def self_correction_prompt(*, task: str) -> str:
             '- 必须返回图片，不要只返回文字说明。',
         ],
         "vton_tryon": [
-            '请仔细检查上一步生成的虚拟试穿图片，逐一核对以下项目：',
+            f'请仔细检查上一步生成的虚拟试穿图片。人物图片 A 的当前姿态为 {pose_id}: {pose_desc}，必须严格保持该姿态不变。逐一核对以下项目：',
             '',
             '- 服装检查：目标服装是否已正确穿在人物身上(覆盖了原服装)？',
             '  -> 如果服装缺失或人物仍穿着原服装，请把目标服装正确穿上；',
