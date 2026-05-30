@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from .models import JobStatus, JobType, ProviderPreference, QualityScores
+from .models import BodyAnalysisResult, JobStatus, JobType, ProductItem, ProviderPreference, QualityScores, SavedScript
 
 
 @dataclass
@@ -108,3 +108,103 @@ class JobStore:
 
 
 job_store = JobStore()
+
+
+class SessionStore:
+    def __init__(self) -> None:
+        self._sessions: dict[str, dict[str, Any]] = {}
+        self._lock = asyncio.Lock()
+
+    async def get_session(self, session_id: str) -> dict[str, Any]:
+        async with self._lock:
+            if session_id not in self._sessions:
+                self._sessions[session_id] = {"id": session_id, "body_analysis": None}
+            return self._sessions[session_id]
+
+    async def set_body_analysis(self, session_id: str, analysis: BodyAnalysisResult) -> None:
+        async with self._lock:
+            if session_id not in self._sessions:
+                self._sessions[session_id] = {"id": session_id}
+            self._sessions[session_id]["body_analysis"] = analysis.model_dump()
+
+
+session_store = SessionStore()
+
+
+DEFAULT_PRODUCTS: list[dict[str, Any]] = [
+    {"id": "p1", "name": "修身显瘦连衣裙", "imageUrl": "", "category": "dress", "tags": ["显瘦", "收腰", "优雅"], "suitable_body_types": ["梨形", "沙漏形"]},
+    {"id": "p2", "name": "宽松休闲T恤", "imageUrl": "", "category": "top", "tags": ["宽松", "舒适", "百搭"], "suitable_body_types": ["苹果形", "直筒形"]},
+    {"id": "p3", "name": "高腰直筒裤", "imageUrl": "", "category": "pants", "tags": ["显高", "收腹", "通勤"], "suitable_body_types": ["梨形", "直筒形", "苹果形"]},
+    {"id": "p4", "name": "收腰西装外套", "imageUrl": "", "category": "outerwear", "tags": ["收腰", "挺括", "通勤"], "suitable_body_types": ["沙漏形", "直筒形"]},
+    {"id": "p5", "name": "A字半身裙", "imageUrl": "", "category": "skirt", "tags": ["遮胯", "显瘦", "甜美"], "suitable_body_types": ["梨形", "苹果形"]},
+    {"id": "p6", "name": "连体阔腿套装", "imageUrl": "", "category": "suit", "tags": ["显高", "遮肉", "气质"], "suitable_body_types": ["苹果形", "直筒形", "梨形"]},
+    {"id": "p7", "name": "塑形运动内衣", "imageUrl": "", "category": "underwear", "tags": ["塑形", "透气", "运动"], "suitable_body_types": ["直筒形", "沙漏形"]},
+    {"id": "p8", "name": "小白鞋", "imageUrl": "", "category": "shoes", "tags": ["百搭", "舒适", "休闲"], "suitable_body_types": ["梨形", "苹果形", "沙漏形", "直筒形"]},
+]
+
+
+class ProductStore:
+    def __init__(self) -> None:
+        self._products: dict[str, ProductItem] = {}
+        self._lock = asyncio.Lock()
+        for p in DEFAULT_PRODUCTS:
+            self._products[p["id"]] = ProductItem(**p)
+
+    async def get_all(self) -> list[ProductItem]:
+        async with self._lock:
+            return list(self._products.values())
+
+    async def get_by_ids(self, ids: list[str]) -> list[ProductItem]:
+        async with self._lock:
+            return [self._products[i] for i in ids if i in self._products]
+
+    async def recommend(self, body_shape: str, limit: int = 5) -> list[tuple[ProductItem, str]]:
+        results: list[tuple[ProductItem, str]] = []
+        async with self._lock:
+            all_items = list(self._products.values())
+        for p in all_items:
+            if body_shape in p.suitable_body_types:
+                reason = f"适合{body_shape}体型"
+                if "显瘦" in p.tags:
+                    reason += "，显瘦效果佳"
+                elif "收腰" in p.tags:
+                    reason += "，收腰显曲线"
+                elif "宽松" in p.tags:
+                    reason += "，舒适遮肉"
+                elif "百搭" in p.tags:
+                    reason += "，百搭不挑人"
+                results.append((p, reason))
+        return results[:limit]
+
+
+product_store = ProductStore()
+
+
+class SavedScriptsStore:
+    def __init__(self) -> None:
+        self._scripts: dict[str, SavedScript] = {}
+        self._lock = asyncio.Lock()
+
+    async def create(self, script: SavedScript) -> SavedScript:
+        async with self._lock:
+            self._scripts[script.id] = script
+            return script
+
+    async def get_all(self) -> list[SavedScript]:
+        async with self._lock:
+            return list(self._scripts.values())
+
+    async def get_favorites(self) -> list[SavedScript]:
+        async with self._lock:
+            return [s for s in self._scripts.values() if s.favorite]
+
+    async def toggle_favorite(self, script_id: str) -> SavedScript | None:
+        async with self._lock:
+            s = self._scripts.get(script_id)
+            if s is None:
+                return None
+            s.favorite = not s.favorite
+            return s
+
+
+saved_scripts_store = SavedScriptsStore()

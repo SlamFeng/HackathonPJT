@@ -71,3 +71,74 @@ export async function getJob(jobId: string) {
   return (await res.json()) as JobResponse;
 }
 
+export async function analyzeBody(imageUrl: string, sessionId: string) {
+  const res = await fetch(`${API_BASE}/v1/body/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ avatarImageUrl: imageUrl, sessionId }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as { sessionId: string; analysis: Record<string, string> };
+}
+
+export async function getBodyAnalysis(sessionId: string) {
+  const res = await fetch(`${API_BASE}/v1/body/analysis/${sessionId}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as { sessionId: string; analysis: Record<string, string> | null };
+}
+
+export async function generateScript(sessionId: string, customerNote?: string) {
+  const res = await fetch(`${API_BASE}/v1/scripts/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId, customerNote: customerNote ?? "" }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as { sessionId: string; script: string };
+}
+
+export async function saveScript(data: {
+  sessionId: string;
+  bodyTypeSummary: string;
+  category: string;
+  content: string;
+}) {
+  const res = await fetch(`${API_BASE}/v1/scripts/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as { id: string; status: string };
+}
+
+export async function listScripts(favoritesOnly = false) {
+  const res = await fetch(`${API_BASE}/v1/scripts?favorites_only=${favoritesOnly}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as Array<Record<string, unknown>>;
+}
+
+export async function toggleScriptFavorite(scriptId: string) {
+  const res = await fetch(`${API_BASE}/v1/scripts/${scriptId}/favorite`, {
+    method: "PATCH",
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as { id: string; favorite: boolean };
+}
+
+export async function recommendProducts(sessionId: string, bodyTypeJson: string) {
+  const res = await fetch(`${API_BASE}/v1/products/recommend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, body_type_json: bodyTypeJson }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as { recommended: string[]; reasons: Record<string, string> };
+}
+
+export async function listProducts() {
+  const res = await fetch(`${API_BASE}/v1/products`, { cache: "no-store" });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as Array<{ id: string; name: string; imageUrl: string; category: string; tags: string[]; suitable_body_types: string[] }>;
+}
+

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { CameraCapture } from "@/components/CameraCapture";
 import { uploadAsset } from "@/lib/api";
 import { ClosetCategory, ClosetItem, useAppStore } from "@/stores/useAppStore";
 
@@ -26,6 +27,7 @@ export default function ClosetPage() {
   const [category, setCategory] = useState<ClosetCategory>("top");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
 
   const canSubmit = useMemo(() => !!file && !busy, [file, busy]);
 
@@ -58,19 +60,54 @@ export default function ClosetPage() {
         <div className="mt-1 text-xl font-semibold tracking-tight">上传单品白底图并分类管理</div>
         <div className="mt-2 text-sm text-zinc-600">单张图片 ≤8MB。上传后可在「工作室」中一键试穿。</div>
 
-        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="mt-4 flex items-center gap-2">
+          <button
+            className={[
+              "rounded-full px-4 py-1.5 text-sm transition-colors",
+              !showCamera ? "bg-zinc-950 text-zinc-50" : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
+            ].join(" ")}
+            onClick={() => setShowCamera(false)}
+            disabled={busy}
+          >
+            文件上传
+          </button>
+          <button
+            className={[
+              "rounded-full px-4 py-1.5 text-sm transition-colors",
+              showCamera ? "bg-zinc-950 text-zinc-50" : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
+            ].join(" ")}
+            onClick={() => { setShowCamera(true); setFile(null); }}
+            disabled={busy}
+          >
+            拍照上传
+          </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="md:col-span-2 rounded-3xl border border-zinc-200/70 bg-zinc-50 p-5">
-            <div className="text-sm font-medium">选择图片</div>
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="mt-4 block w-full text-sm file:mr-4 file:rounded-full file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-zinc-50 hover:file:bg-zinc-800"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              disabled={busy}
-            />
-            <div className="mt-4 text-xs text-zinc-600">
-              {file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)}MB` : "建议：服装占画面大部分、光照均匀、边缘清晰"}
-            </div>
+            {showCamera ? (
+              <CameraCapture
+                onCapture={(capturedFile) => {
+                  setFile(capturedFile);
+                  setShowCamera(false);
+                }}
+                onClose={() => setShowCamera(false)}
+              />
+            ) : (
+              <>
+                <div className="text-sm font-medium">选择图片</div>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="mt-4 block w-full text-sm file:mr-4 file:rounded-full file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-zinc-50 hover:file:bg-zinc-800"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  disabled={busy}
+                />
+                <div className="mt-4 text-xs text-zinc-600">
+                  {file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)}MB` : "建议：服装占画面大部分、光照均匀、边缘清晰"}
+                </div>
+              </>
+            )}
           </div>
           <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
             <div className="text-sm font-medium">分类</div>

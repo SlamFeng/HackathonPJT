@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { absUrl, createJob, getJob } from "@/lib/api";
+import { absUrl, createJob, getJob, listProducts, recommendProducts } from "@/lib/api";
 import { ClosetCategory, ClosetItem, useAppStore } from "@/stores/useAppStore";
 
 type OverlayTransform = {
@@ -39,11 +39,35 @@ export default function StudioPage() {
   const [tryonOverlayGarmentUrl, setTryonOverlayGarmentUrl] = useState<string | null>(null);
   const [tryonOverlayTransform, setTryonOverlayTransform] = useState<OverlayTransform | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recommended, setRecommended] = useState<Array<{ id: string; name: string; reason: string }>>([]);
+  const [loadingRec, setLoadingRec] = useState(false);
 
   const baseAvatarUrl = poseImageUrl ?? avatar.avatarImageUrl ?? null;
 
   const canPose = useMemo(() => !!avatar.avatarImageUrl && !busyPose, [avatar.avatarImageUrl, busyPose]);
   const canTryOn = useMemo(() => !!baseAvatarUrl && !!garment && !busyTryon, [baseAvatarUrl, garment, busyTryon]);
+
+  const sessionId = useAppStore((s) => s.sessionId);
+
+  useEffect(() => {
+    if (!avatar.bodyAnalysis) return;
+    setLoadingRec(true);
+    const json = JSON.stringify(avatar.bodyAnalysis);
+    recommendProducts(sessionId, json)
+      .then(async (res) => {
+        const prods = await listProducts();
+        const map = new Map(prods.map((p) => [p.id, p.name]));
+        setRecommended(
+          res.recommended.map((id) => ({
+            id,
+            name: map.get(id) ?? id,
+            reason: res.reasons[id] ?? "",
+          })),
+        );
+      })
+      .catch(() => {})
+      .finally(() => setLoadingRec(false));
+  }, [avatar.bodyAnalysis, sessionId]);
 
   async function handlePose(nextPoseId: string) {
     setError(null);
@@ -175,6 +199,30 @@ export default function StudioPage() {
           </div>
 
           <div className="mt-6">
+            {recommended.length > 0 && (
+              <div className="mb-4">
+                <div className="flex items-center gap-1.5 text-sm font-medium">
+                  <span>✨ 为您推荐</span>
+                  {loadingRec && <span className="text-[10px] text-zinc-500">加载中...</span>}
+                </div>
+                <div className="mt-2 flex gap-2 overflow-x-auto pb-2">
+                  {recommended.map((r) => (
+                    <button
+                      key={r.id}
+                      className="shrink-0 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-left transition-colors hover:bg-zinc-100"
+                      onClick={() => {
+                        const item = closet.find((c) => r.id.endsWith(c.id.slice(-8)));
+                        if (item) setGarment(item);
+                      }}
+                    >
+                      <div className="text-xs font-medium text-zinc-800">{r.name}</div>
+                      <div className="mt-0.5 text-[10px] text-zinc-500 whitespace-nowrap">{r.reason}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="text-sm font-medium">试穿单品</div>
             <div className="mt-3 space-y-2">
               {closet.length === 0 ? (

@@ -88,3 +88,49 @@ class JobResponse(BaseModel):
     artifacts: list[JobArtifact] | None = None
     qualityScores: QualityScores | None = None
     error: JobError | None = None
+
+
+class BodyAnalysisResult(BaseModel):
+    height_estimate: str = "中等"
+    body_shape: str = "直筒形"
+    shoulder_width: str = "中"
+    waist_definition: str = "一般"
+    style_suggestion: str = ""
+
+    def to_prompt_block(self) -> str:
+        return (
+            f"- 身高评估：{self.height_estimate}\n"
+            f"- 体型：{self.body_shape}\n"
+            f"- 肩宽：{self.shoulder_width}\n"
+            f"- 腰线：{self.waist_definition}\n"
+            f"- 穿搭建议：{self.style_suggestion}"
+        )
+
+
+class ProductItem(BaseModel):
+    id: str
+    name: str
+    imageUrl: str
+    category: str = "top"
+    tags: list[str] = Field(default_factory=list)
+    suitable_body_types: list[str] = Field(default_factory=list)
+
+
+class RecommendRequest(BaseModel):
+    session_id: str
+    body_type_json: str
+
+
+class RecommendResponse(BaseModel):
+    recommended: list[str]
+    reasons: dict[str, str]
+
+
+class SavedScript(BaseModel):
+    id: str
+    session_id: str
+    body_type_summary: str
+    category: str = "通用"
+    content: str
+    favorite: bool = False
+    created_at_ms: int = 0

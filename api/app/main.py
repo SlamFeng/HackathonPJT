@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -12,9 +13,9 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .inference.nanobanana import NanobananaProvider
-from .models import JobCreateRequest, JobResponse, JobStatus, QualityScores
+from .models import BodyAnalysisResult, JobCreateRequest, JobResponse, JobStatus, ProductItem, QualityScores, RecommendRequest, RecommendResponse, SavedScript
 from .settings import settings
-from .store import job_store
+from .store import job_store, product_store, saved_scripts_store, session_store
 
 
 app = FastAPI(title="AI智能试衣间 API", version="0.1.0")
@@ -152,6 +153,117 @@ async def job_events(job_id: str) -> StreamingResponse:
             yield f"data: {data}\n\n".encode("utf-8")
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@app.post("/v1/body/analyze")
+async def analyze_body(request: dict[str, Any]) -> dict[str, Any]:
+    image_url = request.get("imageUrl") or request.get("avatarImageUrl")
+    session_id = request.get("sessionId", "default")
+    if not image_url:
+        raise HTTPException(status_code=400, detail="缺少图片URL")
+
+    try:
+        result = await provider.analyze_body(image_url=image_url)
+    except Exception as e:
+        result = {
+            "height_estimate": "中等",
+            "body_shape": "直筒形",
+            "shoulder_width": "中",
+            "waist_definition": "一般",
+            "style_suggestion": "建议尝试多种风格",
+        }
+
+    analysis = BodyAnalysisResult(**result)
+    await session_store.set_body_analysis(session_id, analysis)
+    return {"sessionId": session_id, "analysis": analysis.model_dump()}
+
+
+@app.get("/v1/body/analysis/{session_id}")
+async def get_body_analysis(session_id: str) -> dict[str, Any]:
+    session = await session_store.get_session(session_id)
+    return {"sessionId": session_id, "analysis": session.get("body_analysis")}
+
+
+@app.post("/v1/scripts/generate")
+async def generate_script(request: dict[str, Any]) -> dict[str, Any]:
+    session_id = request.get("sessionId", "default")
+    customer_note = request.get("customerNote", "")
+
+    session = await session_store.get_session(session_id)
+    body_analysis = session.get("body_analysis")
+    if not body_analysis:
+        raise HTTPException(status_code=400, detail="请先进行体型分析")
+
+    analysis = BodyAnalysisResult(**body_analysis)
+    block = analysis.to_prompt_block()
+
+    try:
+        text = await provider.generate_script(body_analysis_block=block, customer_note=customer_note)
+    except Exception as e:
+        text = (
+            f"根据顾客体型分析，推荐以下搭配方案：\n{block}\n"
+            f"建议优先试穿适合该体型的款式，突出优势部位。"
+        )
+
+    return {"sessionId": session_id, "script": text}
+
+
+@app.post("/v1/scripts/save")
+async def save_script(request: dict[str, Any]) -> dict[str, Any]:
+    script = SavedScript(
+        id=str(uuid.uuid4()),
+        session_id=request.get("sessionId", "default"),
+        body_type_summary=request.get("bodyTypeSummary", ""),
+        category=request.get("category", "通用"),
+        content=request.get("content", ""),
+        created_at_ms=int(time.time() * 1000),
+    )
+    saved = await saved_scripts_store.create(script)
+    return {"id": saved.id, "status": "saved"}
+
+
+@app.get("/v1/scripts")
+async def list_scripts(favorites_only: bool = False) -> list[dict[str, Any]]:
+    if favorites_only:
+        scripts = await saved_scripts_store.get_favorites()
+    else:
+        scripts = await saved_scripts_store.get_all()
+    return [s.model_dump() for s in scripts]
+
+
+@app.patch("/v1/scripts/{script_id}/favorite")
+async def toggle_script_favorite(script_id: str) -> dict[str, Any]:
+    s = await saved_scripts_store.toggle_favorite(script_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail="话术未找到")
+    return {"id": s.id, "favorite": s.favorite}
+
+
+@app.post("/v1/products/recommend", response_model=RecommendResponse)
+async def recommend_products(req: RecommendRequest) -> RecommendResponse:
+    session = await session_store.get_session(req.session_id)
+    body_analysis = session.get("body_analysis", {})
+    body_shape = body_analysis.get("body_shape", "直筒形")
+
+    import json as _json
+    if req.body_type_json:
+        try:
+            parsed = _json.loads(req.body_type_json)
+            body_shape = parsed.get("body_shape", body_shape)
+        except Exception:
+            pass
+
+    results = await product_store.recommend(body_shape)
+    recommended = [p.id for p, _ in results]
+    reasons = {p.id: r for p, r in results}
+
+    return RecommendResponse(recommended=recommended, reasons=reasons)
+
+
+@app.get("/v1/products")
+async def list_products() -> list[dict[str, Any]]:
+    products = await product_store.get_all()
+    return [p.model_dump() for p in products]
 
 
 @app.get("/health")

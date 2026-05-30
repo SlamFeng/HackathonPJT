@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from ..prompts import build_prompt
+from ..prompts import body_analysis_prompt, build_prompt, generate_script_prompt, self_correction_prompt
 from ..settings import settings
 
 
@@ -357,3 +357,87 @@ class NanobananaProvider:
 
     async def vton_tryon(self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> dict[str, Any]:
         return await self._call(task="vton_tryon", inputs=inputs, constraints=constraints)
+
+    async def analyze_body(self, *, image_url: str, timeout: float = 30) -> dict[str, Any]:
+        img_bytes, mime = await self._read_uploaded_image(image_url, timeout=15)
+        prompt = body_analysis_prompt()
+
+        parts: list[dict[str, Any]] = [
+            {"text": prompt},
+            {"inlineData": {"mimeType": mime, "data": base64.b64encode(img_bytes).decode("utf-8")}},
+        ]
+
+        model = settings.nanobanana_model or "gemini-3.1-flash-image-preview"
+        endpoint = self._endpoint_for_model(model)
+        payload = {
+            "contents": [{"parts": parts}],
+            "generationConfig": {"responseModalities": ["TEXT"]},
+        }
+        headers = {
+            "x-goog-api-key": settings.nanobanana_api_key,
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(endpoint, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+
+        candidates = data.get("candidates") or []
+        out_parts = (((candidates[0] if candidates else {}) or {}).get("content") or {}).get("parts") or []
+        text_out = ""
+        for part in out_parts:
+            if isinstance(part, dict) and part.get("text"):
+                text_out += part["text"]
+
+        import json as _json
+        text_out = text_out.strip()
+        if text_out.startswith("```"):
+            lines = text_out.splitlines()
+            text_out = "\n".join(lines[1:] if lines[0].startswith("```") else lines)
+            if text_out.endswith("```"):
+                text_out = text_out[:-3].strip()
+        try:
+            return _json.loads(text_out)
+        except Exception:
+            return {
+                "height_estimate": "中等",
+                "body_shape": "直筒形",
+                "shoulder_width": "中",
+                "waist_definition": "一般",
+                "style_suggestion": "建议尝试多种风格",
+            }
+
+    async def generate_script(self, *, body_analysis_block: str, customer_note: str = "", timeout: float = 30) -> str:
+        if not settings.nanobanana_api_key:
+            return (
+                f"根据顾客体型分析，推荐以下搭配方案：\n"
+                f"{body_analysis_block}\n"
+                f"建议优先试穿适合该体型的款式，突出优势部位。"
+            )
+
+        prompt = generate_script_prompt(body_analysis_block=body_analysis_block, customer_note=customer_note)
+
+        model = settings.nanobanana_model or "gemini-3.1-flash-image-preview"
+        endpoint = self._endpoint_for_model(model)
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseModalities": ["TEXT"]},
+        }
+        headers = {
+            "x-goog-api-key": settings.nanobanana_api_key,
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(endpoint, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+
+        candidates = data.get("candidates") or []
+        out_parts = (((candidates[0] if candidates else {}) or {}).get("content") or {}).get("parts") or []
+        text_out = ""
+        for part in out_parts:
+            if isinstance(part, dict) and part.get("text"):
+                text_out += part["text"]
+        return text_out.strip() or "根据体型分析，建议选择适合的款式进行试穿。"

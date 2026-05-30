@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { z } from "zod";
 
-import { absUrl, createJob, getJob, uploadAsset } from "@/lib/api";
+import { absUrl, analyzeBody, createJob, getJob, uploadAsset } from "@/lib/api";
 import { useAppStore } from "@/stores/useAppStore";
 import AutoAspectImage from "@/components/AutoAspectImage";
 
@@ -50,6 +50,8 @@ type BodyFormState = {
 
 export default function AvatarPage() {
   const setAvatar = useAppStore((s) => s.setAvatar);
+  const setBodyAnalysis = useAppStore((s) => s.setBodyAnalysis);
+  const sessionId = useAppStore((s) => s.sessionId);
   const avatar = useAppStore((s) => s.avatar);
 
   const [file, setFile] = useState<File | null>(null);
@@ -65,6 +67,7 @@ export default function AvatarPage() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<number>(0);
   const [stage, setStage] = useState<string>("");
+  const [showBodyCard, setShowBodyCard] = useState(true);
 
   const canSubmit = useMemo(() => !!file && !busy, [file, busy]);
 
@@ -106,10 +109,18 @@ export default function AvatarPage() {
         if (latest.status === "succeeded") {
           const out = latest.artifacts?.find((a) => a.kind === "image")?.url;
           if (!out) throw new Error("未返回图片");
-          // 后端通常返回 /static/xxx.png（相对 API 服务），这里转成绝对 URL，避免前端去请求 localhost:3000/static 导致看不到结果
-          setAvatar({ avatarImageUrl: absUrl(out) });
+          const avatarUrl = absUrl(out);
+          setAvatar({ avatarImageUrl: avatarUrl });
           setProgress(1);
           setStage("完成");
+
+          try {
+            const { analysis } = await analyzeBody(avatarUrl, sessionId);
+            setBodyAnalysis(analysis as typeof avatar.bodyAnalysis);
+          } catch {
+            // 体型分析非必须，失败不影响主流程
+          }
+
           return;
         }
         if (latest.status === "failed") {
@@ -200,15 +211,49 @@ export default function AvatarPage() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
-          <div className="text-xs text-zinc-500">当前数字人</div>
-          <div className="mt-3">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-zinc-500">当前数字人</div>
+            {avatar.bodyAnalysis && (
+              <button
+                className="text-xs text-zinc-500 hover:text-zinc-800"
+                onClick={() => setShowBodyCard(!showBodyCard)}
+              >
+                {showBodyCard ? "收起体型" : "体型分析"}
+              </button>
+            )}
+          </div>
+          <div className="relative mt-3">
             {avatar.avatarImageUrl ? (
-              <AutoAspectImage
-                src={avatar.avatarImageUrl}
-                alt="avatar"
-                className="w-full overflow-hidden rounded-3xl bg-zinc-100"
-                initialAspectRatio={3 / 4}
-              />
+              <div className="relative">
+                <AutoAspectImage
+                  src={avatar.avatarImageUrl}
+                  alt="avatar"
+                  className="w-full overflow-hidden rounded-3xl bg-zinc-100"
+                  initialAspectRatio={3 / 4}
+                />
+                {avatar.bodyAnalysis && showBodyCard && (
+                  <div className="absolute bottom-3 right-3 left-3 rounded-2xl bg-white/90 p-3 backdrop-blur shadow-sm border border-zinc-200/50">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-medium text-zinc-800">体型分析</div>
+                      <button
+                        className="text-[10px] text-zinc-500 hover:text-zinc-800"
+                        onClick={() => setShowBodyCard(false)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-zinc-600">
+                      <span>体型：{avatar.bodyAnalysis.body_shape}</span>
+                      <span>身高：{avatar.bodyAnalysis.height_estimate}</span>
+                      <span>肩宽：{avatar.bodyAnalysis.shoulder_width}</span>
+                      <span>腰线：{avatar.bodyAnalysis.waist_definition}</span>
+                    </div>
+                    <div className="mt-1 text-[10px] text-zinc-500 leading-tight">
+                      {avatar.bodyAnalysis.style_suggestion}
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="flex h-[420px] w-full items-center justify-center rounded-3xl bg-zinc-50 text-xs text-zinc-500">
                 尚未生成
