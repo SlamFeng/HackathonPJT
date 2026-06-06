@@ -21,7 +21,13 @@ export type JobResponse = {
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export function absUrl(pathOrUrl: string) {
-  if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) return pathOrUrl;
+  if (
+    pathOrUrl.startsWith("http://") ||
+    pathOrUrl.startsWith("https://") ||
+    pathOrUrl.startsWith("data:") ||
+    pathOrUrl.startsWith("blob:")
+  )
+    return pathOrUrl;
   return `${API_BASE}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`;
 }
 
@@ -70,4 +76,3 @@ export async function getJob(jobId: string) {
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as JobResponse;
 }
-

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ArrowRight, ChevronRight } from "lucide-react";
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useI18n } from "@/i18n/I18nProvider";
+
 type IdleRequestHandle = number;
 
 function requestIdle(cb: () => void, timeoutMs = 1200): IdleRequestHandle {
@@ -40,6 +42,7 @@ async function decodeImage(src: string) {
 }
 
 export default function Home() {
+  const { t } = useI18n();
   const IMAGES = useMemo(
     () => [
       {
@@ -190,23 +193,40 @@ export default function Home() {
         />
 
         <div className="absolute left-4 top-6 text-xs font-semibold uppercase tracking-[0.18em] text-white sm:left-8" style={{ zIndex: 60, opacity: 0.9 }}>
-          AI DRESSROOM
+          {t("portal.brand")}
         </div>
 
         <div
           className="pointer-events-none absolute inset-x-0 select-none text-center text-white"
           style={{
             zIndex: 2,
-            top: "18%",
-            fontSize: "clamp(72px, 22vw, 300px)",
-            fontWeight: 800,
+            top: "16%",
             lineHeight: 1,
             letterSpacing: "-0.02em",
-            whiteSpace: "nowrap",
-            textTransform: "uppercase",
           }}
         >
-          TRY ON
+          <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", maxWidth: "95vw" }}>
+            <div
+              style={{
+                fontSize: "clamp(72px, 18vw, 260px)",
+                fontWeight: 850,
+                whiteSpace: "nowrap",
+              }}
+            >
+              LookPilot
+            </div>
+            <div
+              style={{
+                marginTop: "clamp(6px, 1.6vw, 16px)",
+                fontSize: "clamp(44px, 11vw, 260px)",
+                fontWeight: 740,
+                opacity: 0.92,
+                whiteSpace: "nowrap",
+              }}
+            >
+              StyleAI
+            </div>
+          </div>
         </div>
 
         <div className="absolute inset-0" style={{ zIndex: 3 }}>
@@ -291,15 +311,15 @@ export default function Home() {
 
         <div className="absolute bottom-6 left-4 sm:bottom-20 sm:left-24" style={{ zIndex: 60, maxWidth: 360 }}>
           <p className="mb-2 text-base font-bold uppercase text-white sm:mb-3 sm:text-[22px]" style={{ opacity: 0.95, letterSpacing: "0.02em" }}>
-            AI 智能试衣间
+            {t("portal.title")}
           </p>
           <p className="mb-4 hidden text-sm text-white sm:block sm:mb-5" style={{ opacity: 0.85, lineHeight: 1.6 }}>
-            数字人定制 · 姿态控制 · 虚拟换装 · 穿搭顾问。点击右下角进入工作台开始体验。
+            {t("portal.desc")}
           </p>
           <div className="flex items-center gap-3 sm:gap-4">
             <button
               type="button"
-              aria-label="Previous"
+              aria-label={t("portal.nav.prev")}
               onClick={() => navigate("prev")}
               className="grid h-12 w-12 place-items-center rounded-full border-2 border-white text-white transition-[transform,background-color] duration-150 hover:scale-[1.08] hover:bg-white/10 sm:h-16 sm:w-16"
             >
@@ -307,7 +327,7 @@ export default function Home() {
             </button>
             <button
               type="button"
-              aria-label="Next"
+              aria-label={t("portal.nav.next")}
               onClick={() => navigate("next")}
               className="grid h-12 w-12 place-items-center rounded-full border-2 border-white text-white transition-[transform,background-color] duration-150 hover:scale-[1.08] hover:bg-white/10 sm:h-16 sm:w-16"
             >
@@ -328,7 +348,7 @@ export default function Home() {
             textTransform: "uppercase",
           }}
         >
-          DISCOVER IT
+          {t("portal.discover")}
           <ArrowRight className="h-5 w-5 sm:h-8 sm:w-8" strokeWidth={2.25} />
         </Link>
       </div>

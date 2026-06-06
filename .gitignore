@@ -1,5 +1,7 @@
 .DS_Store
 Thumbs.db
+.trae/
+.vercel/
 
 api/.venv/
 api/__pycache__/

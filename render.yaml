@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: hackathonpjt-api
+    env: python
+    rootDir: api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    autoDeploy: true
+    envVars:
+      - key: NANOBANANA_API_KEY
+        sync: false
+      - key: NANOBANANA_MODEL
+        sync: false
+      - key: NANOBANANA_ENDPOINT
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false

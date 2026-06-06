@@ -5,7 +5,7 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 from .models import JobStatus, JobType, ProviderPreference, QualityScores
 
@@ -16,13 +16,13 @@ class JobRecord:
     job_type: JobType
     provider_preference: ProviderPreference
     status: JobStatus = JobStatus.queued
-    stage: str | None = None
-    progress: float | None = None
+    stage: Optional[str] = None
+    progress: Optional[float] = None
     inputs: dict[str, Any] = field(default_factory=dict)
-    constraints: dict[str, Any] | None = None
-    artifacts: list[dict[str, Any]] | None = None
-    quality_scores: QualityScores | None = None
-    error: dict[str, Any] | None = None
+    constraints: Optional[dict[str, Any]] = None
+    artifacts: Optional[list[dict[str, Any]]] = None
+    quality_scores: Optional[QualityScores] = None
+    error: Optional[dict[str, Any]] = None
     created_at_ms: int = field(default_factory=lambda: int(time.time() * 1000))
     updated_at_ms: int = field(default_factory=lambda: int(time.time() * 1000))
 
@@ -38,7 +38,7 @@ class JobStore:
         job_type: JobType,
         provider_preference: ProviderPreference,
         inputs: dict[str, Any],
-        constraints: dict[str, Any] | None,
+        constraints: Optional[dict[str, Any]],
     ) -> JobRecord:
         job_id = str(uuid.uuid4())
         record = JobRecord(
@@ -54,7 +54,7 @@ class JobStore:
         await self.emit(job_id, "queued", 0.0, "queued")
         return record
 
-    async def get(self, job_id: str) -> JobRecord | None:
+    async def get(self, job_id: str) -> Optional[JobRecord]:
         async with self._lock:
             return self._jobs.get(job_id)
 
@@ -62,13 +62,13 @@ class JobStore:
         self,
         job_id: str,
         *,
-        status: JobStatus | None = None,
-        stage: str | None = None,
-        progress: float | None = None,
-        artifacts: list[dict[str, Any]] | None = None,
-        quality_scores: QualityScores | None = None,
-        error: dict[str, Any] | None = None,
-    ) -> JobRecord | None:
+        status: Optional[JobStatus] = None,
+        stage: Optional[str] = None,
+        progress: Optional[float] = None,
+        artifacts: Optional[list[dict[str, Any]]] = None,
+        quality_scores: Optional[QualityScores] = None,
+        error: Optional[dict[str, Any]] = None,
+    ) -> Optional[JobRecord]:
         async with self._lock:
             job = self._jobs.get(job_id)
             if job is None:
@@ -102,7 +102,7 @@ class JobStore:
         }
         q.put_nowait(json.dumps(payload, ensure_ascii=False))
 
-    async def events(self, job_id: str) -> asyncio.Queue[str] | None:
+    async def events(self, job_id: str) -> Optional[asyncio.Queue[str]]:
         async with self._lock:
             return self._event_queues.get(job_id)
 

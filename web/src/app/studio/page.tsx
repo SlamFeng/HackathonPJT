@@ -2,19 +2,21 @@
 
 import { useMemo, useState } from "react";
 
-import { createJob, getJob } from "@/lib/api";
+import { absUrl, createJob, getJob } from "@/lib/api";
+import { useI18n } from "@/i18n/I18nProvider";
 import { ClosetItem, useAppStore } from "@/stores/useAppStore";
 
 const poses = [
-  { id: "hands_on_hips", label: "叉腰" },
-  { id: "neutral_stand", label: "垂立" },
-  { id: "hands_behind_back", label: "背手" },
-  { id: "runway_walk", label: "T台" },
-  { id: "casual_sit", label: "坐姿" },
-  { id: "side_stand", label: "侧身" },
+  { id: "hands_on_hips" },
+  { id: "neutral_stand" },
+  { id: "hands_behind_back" },
+  { id: "runway_walk" },
+  { id: "casual_sit" },
+  { id: "side_stand" },
 ];
 
 export default function StudioPage() {
+  const { t } = useI18n();
   const avatar = useAppStore((s) => s.avatar);
   const closet = useAppStore((s) => s.closet);
 
@@ -57,18 +59,18 @@ export default function StudioPage() {
 
         if (latest.status === "succeeded") {
           const out = latest.artifacts?.find((a) => a.kind === "image")?.url;
-          if (!out) throw new Error("未返回姿态图");
-          setPoseImageUrl(out);
+          if (!out) throw new Error(t("studio.err.pose.noOutput"));
+          setPoseImageUrl(absUrl(out));
           setPoseProgress(1);
           return;
         }
-        if (latest.status === "failed") throw new Error(latest.error?.message ?? "姿态切换失败");
+        if (latest.status === "failed") throw new Error(latest.error?.message ?? t("studio.err.pose.failed"));
         await new Promise((r) => setTimeout(r, 350));
         tries += 1;
       }
-      throw new Error("姿态任务超时");
+      throw new Error(t("studio.err.pose.timeout"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "发生错误");
+      setError(e instanceof Error ? e.message : t("common.err.generic"));
     } finally {
       setBusyPose(false);
     }
@@ -95,18 +97,18 @@ export default function StudioPage() {
         setTryonProgress(Math.max(latest.progress ?? 0.05, 0.05));
         if (latest.status === "succeeded") {
           const out = latest.artifacts?.find((a) => a.kind === "image")?.url;
-          if (!out) throw new Error("未返回试穿图");
-          setTryonImageUrl(out);
+          if (!out) throw new Error(t("studio.err.tryon.noOutput"));
+          setTryonImageUrl(absUrl(out));
           setTryonProgress(1);
           return;
         }
-        if (latest.status === "failed") throw new Error(latest.error?.message ?? "试穿失败");
+        if (latest.status === "failed") throw new Error(latest.error?.message ?? t("studio.err.tryon.failed"));
         await new Promise((r) => setTimeout(r, 350));
         tries += 1;
       }
-      throw new Error("试穿任务超时");
+      throw new Error(t("studio.err.tryon.timeout"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "发生错误");
+      setError(e instanceof Error ? e.message : t("common.err.generic"));
     } finally {
       setBusyTryon(false);
     }
@@ -115,9 +117,9 @@ export default function StudioPage() {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div className="rounded-3xl border border-zinc-200/70 bg-white p-6 md:p-8">
-        <div className="text-xs text-zinc-500">姿态与试穿</div>
-        <div className="mt-1 text-xl font-semibold tracking-tight">选择姿态 → 选择单品 → 一键试穿</div>
-        <div className="mt-2 text-sm text-zinc-600">姿态切换时展示骨架线加载态；试穿过程展示进度条。</div>
+        <div className="text-xs text-zinc-500">{t("studio.section")}</div>
+        <div className="mt-1 text-xl font-semibold tracking-tight">{t("studio.title")}</div>
+        <div className="mt-2 text-sm text-zinc-600">{t("studio.desc")}</div>
       </div>
 
       {error ? (
@@ -126,7 +128,7 @@ export default function StudioPage() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="lg:col-span-3 rounded-3xl border border-zinc-200/70 bg-white p-5">
-          <div className="text-sm font-medium">姿态库</div>
+          <div className="text-sm font-medium">{t("studio.pose.lib")}</div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             {poses.map((p) => {
               const active = poseId === p.id;
@@ -140,7 +142,7 @@ export default function StudioPage() {
                   onClick={() => handlePose(p.id)}
                   disabled={!canPose}
                 >
-                  <div className="text-xs font-medium">{p.label}</div>
+                  <div className="text-xs font-medium">{t(`studio.pose.${p.id}`)}</div>
                   <div
                     className={[
                       "mt-2 h-10 rounded-xl",
@@ -153,10 +155,10 @@ export default function StudioPage() {
           </div>
 
           <div className="mt-6">
-            <div className="text-sm font-medium">试穿单品</div>
+            <div className="text-sm font-medium">{t("studio.garment.title")}</div>
             <div className="mt-3 space-y-2">
               {closet.length === 0 ? (
-                <div className="rounded-2xl bg-zinc-50 p-4 text-xs text-zinc-500">衣橱为空，先去上传单品</div>
+                <div className="rounded-2xl bg-zinc-50 p-4 text-xs text-zinc-500">{t("studio.garment.empty")}</div>
               ) : (
                 closet.slice(0, 6).map((item) => {
                   const active = garment?.id === item.id;
@@ -177,7 +179,7 @@ export default function StudioPage() {
                       <div className="min-w-0">
                         <div className="truncate text-xs font-medium">{item.id.slice(0, 8)}</div>
                         <div className={["text-[11px]", active ? "text-zinc-200" : "text-zinc-500"].join(" ")}>
-                          点击选中
+                          {t("studio.garment.select")}
                         </div>
                       </div>
                     </button>
@@ -193,24 +195,32 @@ export default function StudioPage() {
               onClick={handleTryOn}
               disabled={!canTryOn}
             >
-              {busyTryon ? `试穿中… ${Math.round(tryonProgress * 100)}%` : "一键试穿"}
+              {busyTryon ? t("studio.btn.tryon.busy", { pct: Math.round(tryonProgress * 100) }) : t("studio.btn.tryon.idle")}
             </button>
           </div>
         </div>
 
         <div className="lg:col-span-9 grid grid-cols-1 gap-4 md:grid-cols-2">
           <PreviewCard
-            title="姿态预览"
-            subtitle={busyPose ? `切换中… ${Math.round(poseProgress * 100)}%` : "身份保持 · 骨架约束"}
+            title={t("studio.preview.pose.title")}
+            subtitle={
+              busyPose
+                ? t("studio.preview.pose.subtitle.busy", { pct: Math.round(poseProgress * 100) })
+                : t("studio.preview.pose.subtitle.idle")
+            }
             imageUrl={baseAvatarUrl}
             loading={busyPose}
           />
           <PreviewCard
-            title="试穿预览"
-            subtitle={busyTryon ? `生成中… ${Math.round(tryonProgress * 100)}%` : "边缘贴合 · 光影褶皱"}
+            title={t("studio.preview.tryon.title")}
+            subtitle={
+              busyTryon
+                ? t("studio.preview.tryon.subtitle.busy", { pct: Math.round(tryonProgress * 100) })
+                : t("studio.preview.tryon.subtitle.idle")
+            }
             imageUrl={tryonImageUrl}
             loading={busyTryon}
-            emptyText="选择单品后点击「一键试穿」"
+            emptyText={t("studio.preview.tryon.empty")}
           />
         </div>
       </div>
@@ -231,6 +241,7 @@ function PreviewCard({
   loading: boolean;
   emptyText?: string;
 }) {
+  const { t } = useI18n();
   return (
     <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
       <div className="flex items-end justify-between gap-3">
@@ -245,7 +256,7 @@ function PreviewCard({
           <img src={imageUrl} alt={title} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center px-10 text-center text-xs text-zinc-500">
-            {emptyText ?? "尚未生成"}
+            {emptyText ?? t("studio.preview.empty")}
           </div>
         )}
         {loading ? (
@@ -274,4 +285,3 @@ function SkeletonLine() {
     </div>
   );
 }
-

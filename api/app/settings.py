@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,9 +15,9 @@ class Settings(BaseSettings):
     storage_dir: str = "storage"
     data_dir: str = "data"
 
-    nanobanana_api_key: str | None = None
-    nanobanana_endpoint: str | None = None
+    nanobanana_api_key: Optional[str] = None
+    nanobanana_endpoint: Optional[str] = None
+    nanobanana_model: Optional[str] = None
 
 
 settings = Settings()
-
