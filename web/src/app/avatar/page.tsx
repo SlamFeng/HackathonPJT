@@ -96,9 +96,10 @@ export default function AvatarPage() {
       });
 
       // 移除过短的前端超时限制：改为“最多等待 5 分钟”，用于你先完成接口联调验证
-      const start = Date.now();
       const MAX_WAIT_MS = 5 * 60 * 1000;
-      while (Date.now() - start < MAX_WAIT_MS) {
+      const POLL_INTERVAL_MS = 350;
+      const maxAttempts = Math.ceil(MAX_WAIT_MS / POLL_INTERVAL_MS);
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         const latest = await getJob(job.jobId);
         setStage(latest.stage ?? "处理中");
         setProgress(Math.max(latest.progress ?? 0, 0.2));
@@ -115,7 +116,7 @@ export default function AvatarPage() {
         if (latest.status === "failed") {
           throw new Error(latest.error?.message ?? "生成失败");
         }
-        await new Promise((r) => setTimeout(r, 350));
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       }
       throw new Error("任务超时（等待超过 5 分钟）");
     } catch (e) {

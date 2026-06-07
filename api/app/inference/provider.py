@@ -9,12 +9,17 @@ class InferenceResult(Protocol):
 
 
 class InferenceProvider(Protocol):
-    async def avatar_generate(self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> dict[str, Any]:
+    async def avatar_generate(
+        self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None, job_id: str | None = None
+    ) -> dict[str, Any]:
         ...
 
-    async def pose_render(self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> dict[str, Any]:
+    async def pose_render(
+        self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None, job_id: str | None = None
+    ) -> dict[str, Any]:
         ...
 
-    async def vton_tryon(self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> dict[str, Any]:
+    async def vton_tryon(
+        self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None, job_id: str | None = None
+    ) -> dict[str, Any]:
         ...
-

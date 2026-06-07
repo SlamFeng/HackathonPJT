@@ -15,8 +15,8 @@ node_modules/
 
 ### Outputs
 storage/
+data/
 *.jpg
 *.jpeg
 *.png
 *.webp
-
