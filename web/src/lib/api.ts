@@ -18,6 +18,60 @@ export type JobResponse = {
   error?: { code: string; message: string; detail?: Record<string, unknown> };
 };
 
+export type GenerationAttempt = {
+  model: string;
+  status: "succeeded" | "failed";
+  startedAtMs?: number;
+  finishedAtMs?: number;
+  durationMs?: number;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+    [key: string]: unknown;
+  } | null;
+  error?: string;
+};
+
+export type GenerationRound = {
+  roundIndex: number;
+  kind: "initial_generation" | "self_correction" | string;
+  prompt: string;
+  inputImageUrls: string[];
+  inputPartCount?: number;
+  outputImageUrl?: string | null;
+  attempts: GenerationAttempt[];
+  error?: string;
+};
+
+export type GenerationLogSummary = {
+  remoteCallCount: number;
+  successfulCallCount: number;
+  failedCallCount: number;
+  roundCount: number;
+  selfCorrectionUsed: boolean;
+  totalTokenCount?: number | null;
+};
+
+export type GenerationLogListItem = {
+  id: string;
+  jobId?: string;
+  task: JobType;
+  status: "running" | "succeeded" | "failed" | string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  finalImageUrl?: string | null;
+  summary?: GenerationLogSummary;
+};
+
+export type GenerationLogDetail = GenerationLogListItem & {
+  inputs: Record<string, unknown>;
+  constraints?: Record<string, unknown> | null;
+  rounds: GenerationRound[];
+  meta?: Record<string, unknown>;
+  error?: string | null;
+};
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export function absUrl(pathOrUrl: string) {
@@ -71,3 +125,15 @@ export async function getJob(jobId: string) {
   return (await res.json()) as JobResponse;
 }
 
+export async function listGenerationLogs(limit = 50) {
+  const res = await fetch(`${API_BASE}/v1/debug/generation-logs?limit=${limit}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(await res.text());
+  const data = (await res.json()) as { logs: GenerationLogListItem[] };
+  return data.logs;
+}
+
+export async function getGenerationLog(logId: string) {
+  const res = await fetch(`${API_BASE}/v1/debug/generation-logs/${logId}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as GenerationLogDetail;
+}

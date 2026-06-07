@@ -63,9 +63,10 @@ export default function StudioPage() {
         constraints: { identityLock: true, poseLock: true, qualityLevel: "high", timeoutSec: 300 },
       });
 
-      const start = Date.now();
       const MAX_WAIT_MS = 5 * 60 * 1000;
-      while (Date.now() - start < MAX_WAIT_MS) {
+      const POLL_INTERVAL_MS = 350;
+      const maxAttempts = Math.ceil(MAX_WAIT_MS / POLL_INTERVAL_MS);
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         const latest = await getJob(job.jobId);
         setPoseProgress(Math.max(latest.progress ?? 0.05, 0.05));
 
@@ -77,7 +78,7 @@ export default function StudioPage() {
           return;
         }
         if (latest.status === "failed") throw new Error(latest.error?.message ?? "姿态切换失败");
-        await new Promise((r) => setTimeout(r, 350));
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       }
       throw new Error("姿态任务超时（超过 5 分钟）");
     } catch (e) {
@@ -104,9 +105,10 @@ export default function StudioPage() {
         constraints: { identityLock: true, poseLock: true, garmentLock: true, qualityLevel: "high", timeoutSec: 300 },
       });
 
-      const start = Date.now();
       const MAX_WAIT_MS = 5 * 60 * 1000;
-      while (Date.now() - start < MAX_WAIT_MS) {
+      const POLL_INTERVAL_MS = 350;
+      const maxAttempts = Math.ceil(MAX_WAIT_MS / POLL_INTERVAL_MS);
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         const latest = await getJob(job.jobId);
         setTryonProgress(Math.max(latest.progress ?? 0.05, 0.05));
         if (latest.status === "succeeded") {
@@ -125,7 +127,7 @@ export default function StudioPage() {
           return;
         }
         if (latest.status === "failed") throw new Error(latest.error?.message ?? "试穿失败");
-        await new Promise((r) => setTimeout(r, 350));
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       }
       throw new Error("试穿任务超时（超过 5 分钟）");
     } catch (e) {

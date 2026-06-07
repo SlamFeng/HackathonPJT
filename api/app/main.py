@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from .generation_logs import generation_log_store
 from .inference.nanobanana import NanobananaProvider
 from .models import JobCreateRequest, JobResponse, JobStatus, QualityScores
 from .settings import settings
@@ -75,16 +76,16 @@ async def _run_job(job_id: str) -> None:
 
     try:
         if job.job_type.value == "avatar_generate":
-            result = await provider.avatar_generate(inputs=job.inputs, constraints=job.constraints)
+            result = await provider.avatar_generate(inputs=job.inputs, constraints=job.constraints, job_id=job_id)
             quality = QualityScores(idSimilarity=0.9, artifactScore=0.9)
         elif job.job_type.value == "pose_render":
-            result = await provider.pose_render(inputs=job.inputs, constraints=job.constraints)
+            result = await provider.pose_render(inputs=job.inputs, constraints=job.constraints, job_id=job_id)
             quality = QualityScores(idSimilarity=0.9, poseMatch=0.96, artifactScore=0.85)
         elif job.job_type.value == "vton_tryon":
-            result = await provider.vton_tryon(inputs=job.inputs, constraints=job.constraints)
+            result = await provider.vton_tryon(inputs=job.inputs, constraints=job.constraints, job_id=job_id)
             quality = QualityScores(idSimilarity=0.9, boundaryF1=0.93, artifactScore=0.85)
         else:
-            result = await provider.avatar_generate(inputs=job.inputs, constraints=job.constraints)
+            result = await provider.avatar_generate(inputs=job.inputs, constraints=job.constraints, job_id=job_id)
             quality = QualityScores(artifactScore=0.8)
 
         await asyncio.sleep(0.2)
@@ -152,6 +153,19 @@ async def job_events(job_id: str) -> StreamingResponse:
             yield f"data: {data}\n\n".encode("utf-8")
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@app.get("/v1/debug/generation-logs")
+async def list_generation_logs(limit: int = 50) -> dict[str, Any]:
+    return {"logs": await generation_log_store.list(limit=limit)}
+
+
+@app.get("/v1/debug/generation-logs/{log_id}")
+async def get_generation_log(log_id: str) -> dict[str, Any]:
+    record = await generation_log_store.get(log_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="generation log not found")
+    return record
 
 
 @app.get("/health")

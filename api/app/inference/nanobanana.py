@@ -3,12 +3,14 @@ from __future__ import annotations
 import base64
 import mimetypes
 import struct
+import time
 import uuid
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from ..generation_logs import generation_log_store
 from ..prompts import build_prompt, self_correction_prompt
 from ..settings import settings
 
@@ -128,7 +130,7 @@ class NanobananaProvider:
         timeout: float,
         modalities: list[str] | None = None,
         model: str,
-    ) -> tuple[bytes, str]:
+    ) -> tuple[bytes, str, dict[str, Any] | None]:
         """发送请求给 Gemini 并提取返回的图片 bytes。集中处理各种异常。"""
         modalities = modalities or ["TEXT", "IMAGE"]
         endpoint = self._endpoint_for_model(model)
@@ -161,6 +163,7 @@ class NanobananaProvider:
 
         candidates = data.get("candidates") or []
         out_parts = (((candidates[0] if candidates else {}) or {}).get("content") or {}).get("parts") or []
+        usage = data.get("usageMetadata") or data.get("usage_metadata")
 
         img_b64: str | None = None
         out_mime: str | None = None
@@ -179,7 +182,7 @@ class NanobananaProvider:
                     break
 
         if img_b64:
-            return base64.b64decode(img_b64), out_mime or "image/png"
+            return base64.b64decode(img_b64), out_mime or "image/png", usage if isinstance(usage, dict) else None
 
         raise RuntimeError(f"模型 {model} 未返回图片（text={text_out!r}）")
 
@@ -189,22 +192,57 @@ class NanobananaProvider:
         parts: list[dict[str, Any]],
         timeout: float,
         modalities: list[str] | None = None,
-    ) -> tuple[bytes, str, str]:
+        round_index: int,
+        kind: str,
+        prompt: str,
+        input_image_urls: list[str],
+        log_id: str,
+    ) -> tuple[bytes, str, str, dict[str, Any]]:
         """方案 C: 按 fallback 链依次尝试模型，直到任意模型返回图片。"""
         modalities = modalities or ["TEXT", "IMAGE"]
         last_errors: list[str] = []
+        round_record: dict[str, Any] = {
+            "roundIndex": round_index,
+            "kind": kind,
+            "prompt": prompt,
+            "inputImageUrls": input_image_urls,
+            "inputPartCount": len(parts),
+            "outputImageUrl": None,
+            "attempts": [],
+        }
 
         for model in self._model_fallback_chain:
+            started_at = int(time.time() * 1000)
             try:
-                img_bytes, mime = await self._send_and_extract(
+                img_bytes, mime, usage = await self._send_and_extract(
                     parts=parts, timeout=timeout, modalities=modalities, model=model,
                 )
-                return img_bytes, mime, model
+                finished_at = int(time.time() * 1000)
+                round_record["attempts"].append({
+                    "model": model,
+                    "status": "succeeded",
+                    "startedAtMs": started_at,
+                    "finishedAtMs": finished_at,
+                    "durationMs": finished_at - started_at,
+                    "usageMetadata": usage,
+                })
+                return img_bytes, mime, model, round_record
             except RuntimeError as e:
+                finished_at = int(time.time() * 1000)
                 last_errors.append(f"{model}: {str(e)}")
+                round_record["attempts"].append({
+                    "model": model,
+                    "status": "failed",
+                    "startedAtMs": started_at,
+                    "finishedAtMs": finished_at,
+                    "durationMs": finished_at - started_at,
+                    "error": str(e),
+                })
                 continue
 
-        raise RuntimeError(f"所有模型均失败: {'; '.join(last_errors)}")
+        round_record["error"] = f"所有模型均失败: {'; '.join(last_errors)}"
+        await generation_log_store.append_round(log_id, round_record)
+        raise RuntimeError(round_record["error"])
 
     async def _self_correction_round(
         self,
@@ -213,8 +251,9 @@ class NanobananaProvider:
         original_image_urls: list[str],
         round1_url: str,
         original_timeout: float,
+        log_id: str,
         inputs: dict[str, Any] | None = None,
-    ) -> tuple[bytes, str, str] | None:
+    ) -> tuple[bytes, str, str, dict[str, Any]] | None:
         """
         方案 B - Round 2 自修正：
         把 Round 1 的结果图 + 原始输入图 + 修正 prompt 再次发送给 Gemini，
@@ -248,39 +287,78 @@ class NanobananaProvider:
                     continue
 
             corr_timeout = max(30.0, original_timeout * 0.6)
-            img_bytes, mime, model = await self._generate_with_fallback(
-                parts=parts, timeout=corr_timeout,
+            img_bytes, mime, model, round_record = await self._generate_with_fallback(
+                parts=parts,
+                timeout=corr_timeout,
+                round_index=2,
+                kind="self_correction",
+                prompt=correction_text,
+                input_image_urls=[round1_url, *original_image_urls],
+                log_id=log_id,
             )
-            return img_bytes, mime, model
+            return img_bytes, mime, model, round_record
         except Exception:
             return None
 
-    async def _call(self, *, task: str, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> dict[str, Any]:
+    async def _call(
+        self,
+        *,
+        task: str,
+        inputs: dict[str, Any],
+        constraints: dict[str, Any] | None,
+        job_id: str | None = None,
+    ) -> dict[str, Any]:
+        log_id = await generation_log_store.start(job_id=job_id, task=task, inputs=inputs, constraints=constraints)
         if task == "vton_tryon":
             avatar_url = inputs.get("avatarImageUrl")
             garment_url = inputs.get("garmentImageUrl")
             garment_category = inputs.get("garmentCategory")
             pose_id = inputs.get("poseId")
             if not avatar_url or not garment_url:
-                return {
+                result = {
                     "imageUrl": avatar_url or garment_url,
-                    "meta": {"provider": "nanobanana", "mode": "mock", "reason": "missing_avatar_or_garment"},
+                    "meta": {"provider": "nanobanana", "mode": "mock", "reason": "missing_avatar_or_garment", "generationLogId": log_id},
                 }
+                await generation_log_store.finish(log_id, status="succeeded", final_image_url=result["imageUrl"], meta=result["meta"])
+                return result
             if not settings.nanobanana_api_key:
-                return {
+                result = {
                     "imageUrl": avatar_url,
                     "meta": {
                         "provider": "nanobanana", "mode": "mock", "reason": "missing_api_key",
                         "overlayGarmentImageUrl": garment_url,
                         "overlayTransform": self._default_overlay_transform(str(garment_category) if garment_category is not None else None),
+                        "generationLogId": log_id,
                     },
                 }
+                await generation_log_store.finish(log_id, status="succeeded", final_image_url=result["imageUrl"], meta=result["meta"])
+                return result
         else:
             image_url = inputs.get("imageUrl") or inputs.get("avatarImageUrl") or inputs.get("garmentImageUrl")
             if not settings.nanobanana_api_key or not image_url:
-                return {"imageUrl": image_url, "meta": {"provider": "nanobanana", "mode": "mock", "reason": "missing_api_key_or_image"}}
+                result = {
+                    "imageUrl": image_url,
+                    "meta": {
+                        "provider": "nanobanana",
+                        "mode": "mock",
+                        "reason": "missing_api_key_or_image",
+                        "generationLogId": log_id,
+                    },
+                }
+                await generation_log_store.finish(log_id, status="succeeded", final_image_url=result["imageUrl"], meta=result["meta"])
+                return result
             if task not in ("avatar_generate", "pose_render"):
-                return {"imageUrl": image_url, "meta": {"provider": "nanobanana", "mode": "mock", "reason": "task_not_implemented"}}
+                result = {
+                    "imageUrl": image_url,
+                    "meta": {
+                        "provider": "nanobanana",
+                        "mode": "mock",
+                        "reason": "task_not_implemented",
+                        "generationLogId": log_id,
+                    },
+                }
+                await generation_log_store.finish(log_id, status="succeeded", final_image_url=result["imageUrl"], meta=result["meta"])
+                return result
 
         timeout = constraints.get("timeoutSec", 180) if constraints else 180
 
@@ -317,7 +395,7 @@ class NanobananaProvider:
         print(f"{separator}\n", flush=True)
 
         parts: list[dict[str, Any]] = [{"text": prompt}]
-        meta: dict[str, Any] = {"provider": "nanobanana", "mode": "remote"}
+        meta: dict[str, Any] = {"provider": "nanobanana", "mode": "remote", "generationLogId": log_id}
         # 用于排查前后端参数/拼接是否一致（不包含完整 prompt，避免过长）
         if "poseId" in inputs:
             meta["poseId"] = inputs.get("poseId")
@@ -348,9 +426,23 @@ class NanobananaProvider:
             parts.append({"inlineData": {"mimeType": mime, "data": base64.b64encode(img_bytes).decode("utf-8")}})
 
         # ---- Round 1: 带降级兜底生成（方案 C） ----
-        r1_bytes, r1_mime, model_used = await self._generate_with_fallback(parts=parts, timeout=timeout)
+        try:
+            r1_bytes, r1_mime, model_used, r1_round = await self._generate_with_fallback(
+                parts=parts,
+                timeout=timeout,
+                round_index=1,
+                kind="initial_generation",
+                prompt=prompt,
+                input_image_urls=original_image_urls,
+                log_id=log_id,
+            )
+        except Exception as e:
+            await generation_log_store.finish(log_id, status="failed", error=str(e), meta=meta)
+            raise
         meta["model"] = model_used
         r1_url = self._save_generated_image(r1_bytes, r1_mime)
+        r1_round["outputImageUrl"] = r1_url
+        await generation_log_store.append_round(log_id, r1_round)
 
         # ---- Round 2: 自修正（方案 B，失败不影响最终结果） ----
         correction = await self._self_correction_round(
@@ -358,25 +450,36 @@ class NanobananaProvider:
             original_image_urls=original_image_urls,
             round1_url=r1_url,
             original_timeout=timeout,
+            log_id=log_id,
             inputs=inputs,
         )
 
         if correction is not None:
-            corr_bytes, corr_mime, corr_model = correction
+            corr_bytes, corr_mime, corr_model, corr_round = correction
             final_url = self._save_generated_image(corr_bytes, corr_mime)
+            corr_round["outputImageUrl"] = final_url
+            await generation_log_store.append_round(log_id, corr_round)
             meta["selfCorrection"] = True
             meta["selfCorrectionModel"] = corr_model
             meta["model"] = f"{model_used}->{corr_model}"
+            await generation_log_store.finish(log_id, status="succeeded", final_image_url=final_url, meta=meta)
             return {"imageUrl": final_url, "meta": meta}
         else:
             meta["selfCorrection"] = False
+            await generation_log_store.finish(log_id, status="succeeded", final_image_url=r1_url, meta=meta)
             return {"imageUrl": r1_url, "meta": meta}
 
-    async def avatar_generate(self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> dict[str, Any]:
-        return await self._call(task="avatar_generate", inputs=inputs, constraints=constraints)
+    async def avatar_generate(
+        self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None, job_id: str | None = None
+    ) -> dict[str, Any]:
+        return await self._call(task="avatar_generate", inputs=inputs, constraints=constraints, job_id=job_id)
 
-    async def pose_render(self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> dict[str, Any]:
-        return await self._call(task="pose_render", inputs=inputs, constraints=constraints)
+    async def pose_render(
+        self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None, job_id: str | None = None
+    ) -> dict[str, Any]:
+        return await self._call(task="pose_render", inputs=inputs, constraints=constraints, job_id=job_id)
 
-    async def vton_tryon(self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> dict[str, Any]:
-        return await self._call(task="vton_tryon", inputs=inputs, constraints=constraints)
+    async def vton_tryon(
+        self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None, job_id: str | None = None
+    ) -> dict[str, Any]:
+        return await self._call(task="vton_tryon", inputs=inputs, constraints=constraints, job_id=job_id)
