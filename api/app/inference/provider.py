@@ -19,6 +19,11 @@ class InferenceProvider(Protocol):
     ) -> dict[str, Any]:
         ...
 
+    async def garment_extract(
+        self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None, job_id: str | None = None
+    ) -> dict[str, Any]:
+        ...
+
     async def vton_tryon(
         self, *, inputs: dict[str, Any], constraints: dict[str, Any] | None, job_id: str | None = None
     ) -> dict[str, Any]:

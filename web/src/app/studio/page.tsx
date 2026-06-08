@@ -1,139 +1,140 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 
-import { absUrl, createJob, getJob } from "@/lib/api";
-import { ClosetCategory, ClosetItem, useAppStore } from "@/stores/useAppStore";
+import { absUrl, createJob, waitForImageJob } from "@/lib/api";
+import {
+  ClosetCategory,
+  ClosetItem,
+  OverlayTransform,
+  POSES,
+  PoseId,
+  useAppStore,
+} from "@/stores/useAppStore";
 
-type OverlayTransform = {
-  cx: number;
-  cy: number;
-  w: number;
-  rotationDeg?: number;
-  opacity?: number;
-  blendMode?: string;
-};
-
-const poses = [
-  { id: "hands_on_hips", label: "叉腰" },
-  { id: "neutral_stand", label: "垂立" },
-  { id: "hands_behind_back", label: "背手" },
-  { id: "runway_walk", label: "T台" },
-  { id: "casual_sit", label: "坐姿" },
-  { id: "side_stand", label: "侧身" },
-];
+function tryOnKey(poseId: PoseId, garmentId: string) {
+  return `${poseId}:${garmentId}`;
+}
 
 export default function StudioPage() {
   const avatar = useAppStore((s) => s.avatar);
   const closet = useAppStore((s) => s.closet);
+  const setPoseRender = useAppStore((s) => s.setPoseRender);
+  const patchPoseRender = useAppStore((s) => s.patchPoseRender);
+  const setTryOnRender = useAppStore((s) => s.setTryOnRender);
+  const patchTryOnRender = useAppStore((s) => s.patchTryOnRender);
+  const clearTryOnRendersForPose = useAppStore((s) => s.clearTryOnRendersForPose);
 
-  const [poseId, setPoseId] = useState(poses[0]!.id);
+  const [poseId, setPoseId] = useState<PoseId>(POSES[0]!.id);
   const [garment, setGarment] = useState<ClosetItem | null>(null);
-
-  const [busyPose, setBusyPose] = useState(false);
-  const [busyTryon, setBusyTryon] = useState(false);
-  const [poseProgress, setPoseProgress] = useState(0);
-  const [tryonProgress, setTryonProgress] = useState(0);
-  const [poseImageUrl, setPoseImageUrl] = useState<string | null>(null);
-  const [tryonImageUrl, setTryonImageUrl] = useState<string | null>(null);
-  const [tryonOverlayGarmentUrl, setTryonOverlayGarmentUrl] = useState<string | null>(null);
-  const [tryonOverlayTransform, setTryonOverlayTransform] = useState<OverlayTransform | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const baseAvatarUrl = poseImageUrl ?? avatar.avatarImageUrl ?? null;
+  const currentPose = avatar.poseRenders[poseId];
+  const poseReady = currentPose?.status === "succeeded" && !!currentPose.imageUrl;
+  const poseRunning = currentPose?.status === "running";
+  const selectedTryOnKey = garment ? tryOnKey(poseId, garment.id) : null;
+  const currentTryOn = selectedTryOnKey ? avatar.tryOnRenders[selectedTryOnKey] : undefined;
+  const tryOnRunning = currentTryOn?.status === "running";
 
-  const canPose = useMemo(() => !!avatar.avatarImageUrl && !busyPose, [avatar.avatarImageUrl, busyPose]);
-  const canTryOn = useMemo(() => !!baseAvatarUrl && !!garment && !busyTryon, [baseAvatarUrl, garment, busyTryon]);
+  const canTryOn = useMemo(
+    () => !!poseReady && !!currentPose?.imageUrl && !!garment && !tryOnRunning,
+    [poseReady, currentPose?.imageUrl, garment, tryOnRunning],
+  );
+  const canRegeneratePose = useMemo(
+    () => !!avatar.avatarImageUrl && !poseRunning,
+    [avatar.avatarImageUrl, poseRunning],
+  );
 
-  async function handlePose(nextPoseId: string) {
+  async function regeneratePose(targetPoseId: PoseId) {
     setError(null);
-    setPoseId(nextPoseId);
-    if (!avatar.avatarImageUrl) return;
+    if (!avatar.avatarImageUrl) {
+      setError("请先生成数字人");
+      return;
+    }
 
-    setBusyPose(true);
-    setPoseProgress(0.05);
-    setTryonImageUrl(null);
-    setTryonOverlayGarmentUrl(null);
-    setTryonOverlayTransform(null);
+    clearTryOnRendersForPose(targetPoseId);
+    setPoseRender(targetPoseId, { status: "running", progress: 0.05 });
 
     try {
       const job = await createJob({
         jobType: "pose_render",
-        inputs: { avatarImageUrl: avatar.avatarImageUrl, poseId: nextPoseId },
+        inputs: { avatarImageUrl: avatar.avatarImageUrl, poseId: targetPoseId },
         constraints: { identityLock: true, poseLock: true, qualityLevel: "high", timeoutSec: 300 },
       });
 
-      const MAX_WAIT_MS = 5 * 60 * 1000;
-      const POLL_INTERVAL_MS = 350;
-      const maxAttempts = Math.ceil(MAX_WAIT_MS / POLL_INTERVAL_MS);
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        const latest = await getJob(job.jobId);
-        setPoseProgress(Math.max(latest.progress ?? 0.05, 0.05));
+      const { image } = await waitForImageJob(job.jobId, {
+        onUpdate: (latest) =>
+          patchPoseRender(targetPoseId, {
+            status: "running",
+            progress: Math.max(latest.progress ?? 0.05, 0.05),
+          }),
+      });
 
-        if (latest.status === "succeeded") {
-          const out = latest.artifacts?.find((a) => a.kind === "image")?.url;
-          if (!out) throw new Error("未返回姿态图");
-          setPoseImageUrl(absUrl(out));
-          setPoseProgress(1);
-          return;
-        }
-        if (latest.status === "failed") throw new Error(latest.error?.message ?? "姿态切换失败");
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-      }
-      throw new Error("姿态任务超时（超过 5 分钟）");
+      setPoseRender(targetPoseId, {
+        status: "succeeded",
+        progress: 1,
+        imageUrl: absUrl(image.url),
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "发生错误");
-    } finally {
-      setBusyPose(false);
+      setPoseRender(targetPoseId, {
+        status: "failed",
+        progress: 1,
+        error: e instanceof Error ? e.message : "姿态重新生成失败",
+      });
+      setError(e instanceof Error ? e.message : "姿态重新生成失败");
     }
   }
 
   async function handleTryOn() {
     setError(null);
-    if (!baseAvatarUrl) return;
-    if (!garment) return;
+    if (!poseReady || !currentPose?.imageUrl) {
+      setError("当前姿态还没有生成完成，暂时不能试穿");
+      return;
+    }
+    if (!garment || !selectedTryOnKey) return;
 
-    setBusyTryon(true);
-    setTryonProgress(0.05);
-    setTryonOverlayGarmentUrl(null);
-    setTryonOverlayTransform(null);
+    setTryOnRender(selectedTryOnKey, { status: "running", progress: 0.05 });
 
     try {
       const job = await createJob({
         jobType: "vton_tryon",
-        inputs: { avatarImageUrl: baseAvatarUrl, garmentImageUrl: garment.imageUrl, garmentCategory: garment.category, poseId },
+        inputs: {
+          avatarImageUrl: currentPose.imageUrl,
+          garmentImageUrl: garment.imageUrl,
+          garmentCategory: garment.category,
+          poseId,
+        },
         constraints: { identityLock: true, poseLock: true, garmentLock: true, qualityLevel: "high", timeoutSec: 300 },
       });
 
-      const MAX_WAIT_MS = 5 * 60 * 1000;
-      const POLL_INTERVAL_MS = 350;
-      const maxAttempts = Math.ceil(MAX_WAIT_MS / POLL_INTERVAL_MS);
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        const latest = await getJob(job.jobId);
-        setTryonProgress(Math.max(latest.progress ?? 0.05, 0.05));
-        if (latest.status === "succeeded") {
-          const img = latest.artifacts?.find((a) => a.kind === "image");
-          const out = img?.url;
-          if (!out) throw new Error("未返回试穿图");
-          const meta = (img?.meta ?? {}) as Record<string, unknown>;
-          const isMock = meta.mode === "mock";
-          const overlay = isMock && typeof meta.overlayGarmentImageUrl === "string" ? meta.overlayGarmentImageUrl : null;
-          const transformRaw = isMock ? (meta.overlayTransform as unknown) : null;
-          const transform = isMock ? normalizeOverlayTransform(transformRaw) : null;
-          setTryonImageUrl(absUrl(out));
-          setTryonOverlayGarmentUrl(overlay ? absUrl(overlay) : null);
-          setTryonOverlayTransform(transform);
-          setTryonProgress(1);
-          return;
-        }
-        if (latest.status === "failed") throw new Error(latest.error?.message ?? "试穿失败");
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-      }
-      throw new Error("试穿任务超时（超过 5 分钟）");
+      const { image } = await waitForImageJob(job.jobId, {
+        onUpdate: (latest) =>
+          patchTryOnRender(selectedTryOnKey, {
+            status: "running",
+            progress: Math.max(latest.progress ?? 0.05, 0.05),
+          }),
+      });
+
+      const meta = (image.meta ?? {}) as Record<string, unknown>;
+      const isMock = meta.mode === "mock";
+      const overlay = isMock && typeof meta.overlayGarmentImageUrl === "string" ? meta.overlayGarmentImageUrl : null;
+      const transformRaw = isMock ? (meta.overlayTransform as unknown) : null;
+      const transform = isMock ? normalizeOverlayTransform(transformRaw) : null;
+      setTryOnRender(selectedTryOnKey, {
+        status: "succeeded",
+        progress: 1,
+        imageUrl: absUrl(image.url),
+        overlayGarmentUrl: overlay ? absUrl(overlay) : null,
+        overlayTransform: transform,
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "发生错误");
-    } finally {
-      setBusyTryon(false);
+      setTryOnRender(selectedTryOnKey, {
+        status: "failed",
+        progress: 1,
+        error: e instanceof Error ? e.message : "试穿失败",
+      });
+      setError(e instanceof Error ? e.message : "试穿失败");
     }
   }
 
@@ -142,7 +143,9 @@ export default function StudioPage() {
       <div className="rounded-3xl border border-zinc-200/70 bg-white p-6 md:p-8">
         <div className="text-xs text-zinc-500">姿态与试穿</div>
         <div className="mt-1 text-xl font-semibold tracking-tight">选择姿态 → 选择单品 → 一键试穿</div>
-        <div className="mt-2 text-sm text-zinc-600">姿态切换时展示骨架线加载态；试穿过程展示进度条。</div>
+        <div className="mt-2 text-sm text-zinc-600">
+          数字人生成后会自动预生成所有姿态；已生成的姿态和试穿图会被缓存，切换回来可直接查看。
+        </div>
       </div>
 
       {error ? (
@@ -150,11 +153,24 @@ export default function StudioPage() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <div className="lg:col-span-3 rounded-3xl border border-zinc-200/70 bg-white p-5">
-          <div className="text-sm font-medium">姿态库</div>
+        <div className="rounded-3xl border border-zinc-200/70 bg-white p-5 lg:col-span-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-medium">姿态库</div>
+            <button
+              className={[
+                "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                canRegeneratePose ? "bg-zinc-950 text-zinc-50 hover:bg-zinc-800" : "bg-zinc-200 text-zinc-500",
+              ].join(" ")}
+              onClick={() => regeneratePose(poseId)}
+              disabled={!canRegeneratePose}
+            >
+              {poseRunning ? "生成中" : "重新生成"}
+            </button>
+          </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
-            {poses.map((p) => {
+            {POSES.map((p) => {
               const active = poseId === p.id;
+              const state = avatar.poseRenders[p.id];
               return (
                 <button
                   key={p.id}
@@ -162,16 +178,27 @@ export default function StudioPage() {
                     "group relative overflow-hidden rounded-2xl border px-3 py-3 text-left transition-colors",
                     active ? "border-zinc-900 bg-zinc-900 text-zinc-50" : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50",
                   ].join(" ")}
-                  onClick={() => handlePose(p.id)}
-                  disabled={!canPose}
+                  onClick={() => {
+                    setError(null);
+                    setPoseId(p.id);
+                  }}
                 >
-                  <div className="text-xs font-medium">{p.label}</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-medium">{p.label}</div>
+                    <div className={["text-[10px]", active ? "text-zinc-300" : "text-zinc-500"].join(" ")}>
+                      {poseStatusLabel(state?.status)}
+                    </div>
+                  </div>
                   <div
                     className={[
-                      "mt-2 h-10 rounded-xl",
+                      "mt-2 h-10 overflow-hidden rounded-xl",
                       active ? "bg-zinc-800" : "bg-zinc-100 group-hover:bg-zinc-200",
                     ].join(" ")}
-                  />
+                  >
+                    {state?.status === "running" ? (
+                      <div className="h-full bg-zinc-400 transition-all" style={{ width: `${Math.round(state.progress * 100)}%` }} />
+                    ) : null}
+                  </div>
                 </button>
               );
             })}
@@ -185,6 +212,7 @@ export default function StudioPage() {
               ) : (
                 closet.slice(0, 6).map((item) => {
                   const active = garment?.id === item.id;
+                  const cachedTryOn = avatar.tryOnRenders[tryOnKey(poseId, item.id)];
                   return (
                     <button
                       key={item.id}
@@ -202,7 +230,7 @@ export default function StudioPage() {
                       <div className="min-w-0">
                         <div className="truncate text-xs font-medium">{item.id.slice(0, 8)}</div>
                         <div className={["text-[11px]", active ? "text-zinc-200" : "text-zinc-500"].join(" ")}>
-                          点击选中
+                          {tryOnStatusLabel(cachedTryOn?.status)}
                         </div>
                       </div>
                     </button>
@@ -218,32 +246,71 @@ export default function StudioPage() {
               onClick={handleTryOn}
               disabled={!canTryOn}
             >
-              {busyTryon ? `试穿中… ${Math.round(tryonProgress * 100)}%` : "一键试穿"}
+              {tryOnRunning
+                ? `试穿中... ${Math.round((currentTryOn?.progress ?? 0) * 100)}%`
+                : currentTryOn?.status === "succeeded"
+                  ? "重新试穿"
+                  : "一键试穿"}
             </button>
           </div>
         </div>
 
-        <div className="lg:col-span-9 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:col-span-9">
           <PreviewCard
             title="姿态预览"
-            subtitle={busyPose ? `切换中… ${Math.round(poseProgress * 100)}%` : "身份保持 · 骨架约束"}
-            imageUrl={baseAvatarUrl}
-            loading={busyPose}
+            subtitle={poseSubtitle(currentPose)}
+            imageUrl={poseReady ? currentPose?.imageUrl : null}
+            loading={poseRunning}
+            emptyText={avatar.avatarImageUrl ? "等待当前姿态生成完成" : "请先生成数字人"}
           />
           <PreviewCard
             title="试穿预览"
-            subtitle={busyTryon ? `生成中… ${Math.round(tryonProgress * 100)}%` : "边缘贴合 · 光影褶皱"}
-            imageUrl={tryonImageUrl}
-            overlayImageUrl={tryonOverlayGarmentUrl}
-            overlayTransform={tryonOverlayTransform}
+            subtitle={tryOnSubtitle(currentTryOn)}
+            imageUrl={currentTryOn?.status === "succeeded" ? currentTryOn.imageUrl : null}
+            overlayImageUrl={currentTryOn?.overlayGarmentUrl}
+            overlayTransform={currentTryOn?.overlayTransform}
             overlayCategory={garment?.category ?? null}
-            loading={busyTryon}
-            emptyText="选择单品后点击「一键试穿」"
+            loading={tryOnRunning}
+            emptyText={
+              !poseReady
+                ? "当前姿态生成完成后可试穿"
+                : garment
+                  ? "点击「一键试穿」生成该姿态试穿图"
+                  : "选择单品后点击「一键试穿」"
+            }
           />
         </div>
       </div>
     </div>
   );
+}
+
+function poseStatusLabel(status?: string) {
+  if (status === "running") return "生成中";
+  if (status === "succeeded") return "已生成";
+  if (status === "failed") return "失败";
+  return "未生成";
+}
+
+function tryOnStatusLabel(status?: string) {
+  if (status === "running") return "试穿中";
+  if (status === "succeeded") return "已试穿";
+  if (status === "failed") return "试穿失败";
+  return "点击选中";
+}
+
+function poseSubtitle(state?: { status: string; progress: number; error?: string }) {
+  if (state?.status === "running") return `生成中... ${Math.round(state.progress * 100)}%`;
+  if (state?.status === "succeeded") return "已缓存 · 切换姿态无需重新生成";
+  if (state?.status === "failed") return state.error ?? "姿态生成失败，可点击重新生成";
+  return "尚未生成 · 可点击重新生成";
+}
+
+function tryOnSubtitle(state?: { status: string; progress: number; error?: string }) {
+  if (state?.status === "running") return `生成中... ${Math.round(state.progress * 100)}%`;
+  if (state?.status === "succeeded") return "已缓存 · 可重新试穿覆盖";
+  if (state?.status === "failed") return state.error ?? "试穿失败，可重新生成";
+  return "按姿态与单品分别缓存";
 }
 
 function PreviewCard({
@@ -324,8 +391,8 @@ function SkeletonLine() {
   );
 }
 
-function getOverlayStyle(category: ClosetCategory): React.CSSProperties {
-  const base: React.CSSProperties = { left: "50%", transform: "translate(-50%, -50%)", height: "auto" };
+function getOverlayStyle(category: ClosetCategory): CSSProperties {
+  const base: CSSProperties = { left: "50%", transform: "translate(-50%, -50%)", height: "auto" };
   if (category === "top") return { ...base, top: "40%", width: "66%" };
   if (category === "outerwear") return { ...base, top: "42%", width: "74%" };
   if (category === "dress") return { ...base, top: "54%", width: "74%" };
@@ -357,7 +424,7 @@ function normalizeOverlayTransform(v: unknown): OverlayTransform | null {
   };
 }
 
-function overlayTransformToStyle(t: OverlayTransform): React.CSSProperties {
+function overlayTransformToStyle(t: OverlayTransform): CSSProperties {
   const rot = t.rotationDeg ?? 0;
   const opacity = t.opacity ?? 0.8;
   const blend = t.blendMode ?? "multiply";
@@ -368,6 +435,6 @@ function overlayTransformToStyle(t: OverlayTransform): React.CSSProperties {
     height: "auto",
     transform: `translate(-50%, -50%) rotate(${rot}deg)`,
     opacity,
-    mixBlendMode: blend as React.CSSProperties["mixBlendMode"],
+    mixBlendMode: blend as CSSProperties["mixBlendMode"],
   };
 }

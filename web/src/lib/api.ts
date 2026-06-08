@@ -1,4 +1,4 @@
-export type JobType = "avatar_generate" | "pose_render" | "vton_tryon" | "outfit_render";
+export type JobType = "avatar_generate" | "pose_render" | "garment_extract" | "vton_tryon" | "outfit_render";
 export type ProviderPreference = "nanobanana_first" | "open_source_first" | "comfyui_first";
 
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
@@ -123,6 +123,35 @@ export async function getJob(jobId: string) {
   const res = await fetch(`${API_BASE}/v1/jobs/${jobId}`, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as JobResponse;
+}
+
+export async function waitForImageJob(
+  jobId: string,
+  options?: {
+    maxWaitMs?: number;
+    pollIntervalMs?: number;
+    minProgress?: number;
+    onUpdate?: (job: JobResponse) => void;
+  },
+) {
+  const maxWaitMs = options?.maxWaitMs ?? 5 * 60 * 1000;
+  const pollIntervalMs = options?.pollIntervalMs ?? 350;
+  const maxAttempts = Math.ceil(maxWaitMs / pollIntervalMs);
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const latest = await getJob(jobId);
+    options?.onUpdate?.(latest);
+
+    if (latest.status === "succeeded") {
+      const image = latest.artifacts?.find((a) => a.kind === "image");
+      if (!image?.url) throw new Error("未返回图片");
+      return { job: latest, image };
+    }
+    if (latest.status === "failed") {
+      throw new Error(latest.error?.message ?? "任务失败");
+    }
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+  }
+  throw new Error("任务超时（等待超过 5 分钟）");
 }
 
 export async function listGenerationLogs(limit = 50) {

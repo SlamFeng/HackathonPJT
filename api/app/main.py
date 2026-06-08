@@ -81,6 +81,9 @@ async def _run_job(job_id: str) -> None:
         elif job.job_type.value == "pose_render":
             result = await provider.pose_render(inputs=job.inputs, constraints=job.constraints, job_id=job_id)
             quality = QualityScores(idSimilarity=0.9, poseMatch=0.96, artifactScore=0.85)
+        elif job.job_type.value == "garment_extract":
+            result = await provider.garment_extract(inputs=job.inputs, constraints=job.constraints, job_id=job_id)
+            quality = QualityScores(boundaryF1=0.9, artifactScore=0.85)
         elif job.job_type.value == "vton_tryon":
             result = await provider.vton_tryon(inputs=job.inputs, constraints=job.constraints, job_id=job_id)
             quality = QualityScores(idSimilarity=0.9, boundaryF1=0.93, artifactScore=0.85)

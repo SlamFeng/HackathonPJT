@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import { z } from "zod";
 
-import { absUrl, createJob, getJob, uploadAsset } from "@/lib/api";
-import { useAppStore } from "@/stores/useAppStore";
+import { absUrl, createJob, uploadAsset, waitForImageJob } from "@/lib/api";
+import { POSES, PoseId, useAppStore } from "@/stores/useAppStore";
 import AutoAspectImage from "@/components/AutoAspectImage";
 
 const optionalIntInRange = (label: string, min: number, max: number) =>
@@ -50,16 +50,18 @@ type BodyFormState = {
 
 export default function AvatarPage() {
   const setAvatar = useAppStore((s) => s.setAvatar);
+  const setPoseRender = useAppStore((s) => s.setPoseRender);
+  const patchPoseRender = useAppStore((s) => s.patchPoseRender);
   const avatar = useAppStore((s) => s.avatar);
 
   const [file, setFile] = useState<File | null>(null);
   const [form, setForm] = useState<BodyFormState>({
-    heightCm: "165",
-    weightKg: "55",
-    shoulderWidthCm: "",
-    chestCm: "",
-    waistCm: "",
-    hipCm: "",
+    heightCm: "170",
+    weightKg: "65",
+    shoulderWidthCm: "42",
+    chestCm: "92",
+    waistCm: "78",
+    hipCm: "96",
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -67,6 +69,40 @@ export default function AvatarPage() {
   const [stage, setStage] = useState<string>("");
 
   const canSubmit = useMemo(() => !!file && !busy, [file, busy]);
+
+  async function generatePoseInBackground(avatarImageUrl: string, nextPoseId: PoseId) {
+    setPoseRender(nextPoseId, { status: "running", progress: 0.05 });
+    try {
+      const job = await createJob({
+        jobType: "pose_render",
+        inputs: { avatarImageUrl, poseId: nextPoseId },
+        constraints: { identityLock: true, poseLock: true, qualityLevel: "high", timeoutSec: 300 },
+      });
+      const { image } = await waitForImageJob(job.jobId, {
+        minProgress: 0.05,
+        onUpdate: (latest) =>
+          patchPoseRender(nextPoseId, {
+            status: "running",
+            progress: Math.max(latest.progress ?? 0.05, 0.05),
+          }),
+      });
+      setPoseRender(nextPoseId, {
+        status: "succeeded",
+        progress: 1,
+        imageUrl: absUrl(image.url),
+      });
+    } catch (e) {
+      setPoseRender(nextPoseId, {
+        status: "failed",
+        progress: 1,
+        error: e instanceof Error ? e.message : "姿态预生成失败",
+      });
+    }
+  }
+
+  function startPosePrefetch(avatarImageUrl: string) {
+    void Promise.all(POSES.map((pose) => generatePoseInBackground(avatarImageUrl, pose.id)));
+  }
 
   async function handleGenerate() {
     setError(null);
@@ -96,29 +132,20 @@ export default function AvatarPage() {
       });
 
       // 移除过短的前端超时限制：改为“最多等待 5 分钟”，用于你先完成接口联调验证
-      const MAX_WAIT_MS = 5 * 60 * 1000;
-      const POLL_INTERVAL_MS = 350;
-      const maxAttempts = Math.ceil(MAX_WAIT_MS / POLL_INTERVAL_MS);
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        const latest = await getJob(job.jobId);
-        setStage(latest.stage ?? "处理中");
-        setProgress(Math.max(latest.progress ?? 0, 0.2));
-
-        if (latest.status === "succeeded") {
-          const out = latest.artifacts?.find((a) => a.kind === "image")?.url;
-          if (!out) throw new Error("未返回图片");
-          // 后端通常返回 /static/xxx.png（相对 API 服务），这里转成绝对 URL，避免前端去请求 localhost:3000/static 导致看不到结果
-          setAvatar({ avatarImageUrl: absUrl(out) });
-          setProgress(1);
-          setStage("完成");
-          return;
-        }
-        if (latest.status === "failed") {
-          throw new Error(latest.error?.message ?? "生成失败");
-        }
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-      }
-      throw new Error("任务超时（等待超过 5 分钟）");
+      const { job: latest, image } = await waitForImageJob(job.jobId, {
+        minProgress: 0.2,
+        onUpdate: (current) => {
+          setStage(current.stage ?? "处理中");
+          setProgress(Math.max(current.progress ?? 0, 0.2));
+        },
+      });
+      const avatarImageUrl = absUrl(image.url);
+      // 后端通常返回 /static/xxx.png（相对 API 服务），这里转成绝对 URL，避免前端去请求 localhost:3000/static 导致看不到结果
+      setAvatar({ avatarImageUrl });
+      setProgress(1);
+      setStage(latest.status === "succeeded" ? "完成，正在后台预生成姿态" : "完成");
+      startPosePrefetch(avatarImageUrl);
+      return;
     } catch (e) {
       setError(e instanceof Error ? e.message : "发生错误");
     } finally {
