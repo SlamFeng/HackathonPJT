@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 class JobType(StrEnum):
     avatar_generate = "avatar_generate"
     pose_render = "pose_render"
+    garment_extract = "garment_extract"
     vton_tryon = "vton_tryon"
     outfit_render = "outfit_render"
 
