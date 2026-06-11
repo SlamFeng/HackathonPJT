@@ -1,28 +1,57 @@
-# 最小可部署拓扑：web (Next.js) + api (FastAPI)
+# 最小可部署拓扑：web (Next.js) + api (FastAPI) + db (Postgres)
 # 一键启动：  docker compose up --build
 # 访问：      前端 http://localhost:3000   后端 http://localhost:8000/health
 #
 # 后端密钥：把 Gemini Key 放在 api/.env（已被 .gitignore 忽略，不会提交）。
 #           没有 .env 时后端自动走 mock（回显输入图），链路仍可跑通。
+# 管理员：   首次启动按 ADMIN_EMAIL / ADMIN_PASSWORD 自动创建（默认见下）。
 
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ailurus
+      POSTGRES_PASSWORD: ailurus
+      POSTGRES_DB: ailurus
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ailurus -d ailurus"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
   api:
     build: ./api
     env_file:
       - path: ./api/.env
         required: false
+    environment:
+      # 容器内通过服务名 db 访问 Postgres
+      DATABASE_URL: postgresql+asyncpg://ailurus:ailurus@db:5432/ailurus
+      SESSION_SECRET: ${SESSION_SECRET:-dev-insecure-change-me}
+      COOKIE_SECURE: "false"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # 首次启动自动创建的管理员（请在生产环境修改）
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@ailurus.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
     ports:
       - "8000:8000"
     volumes:
       # 生成的图片与日志持久化，容器重启不丢
       - api_storage:/app/storage
       - api_data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 25s
     restart: unless-stopped
 
   web:
@@ -39,5 +68,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  db_data:
   api_storage:
   api_data:

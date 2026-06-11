@@ -64,7 +64,8 @@ class JobCreateRequest(BaseModel):
 
 class JobArtifact(BaseModel):
     kind: str
-    url: str
+    # url 允许为空：当生成无有效图片输出（如降级/兜底）时避免序列化 500
+    url: str | None = None
     meta: dict[str, Any] | None = None
 
 

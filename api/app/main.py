@@ -6,23 +6,28 @@ import uuid
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from .auth.deps import get_current_user, require_admin
+from .auth.router import router as auth_router
+from .auth.service import seed_admin
+from .db.base import SessionLocal
+from .db.models import User
 from .generation_logs import generation_log_store
 from .inference.nanobanana import NanobananaProvider
 from .models import JobCreateRequest, JobResponse, JobStatus, QualityScores
 from .settings import settings
-from .store import job_store
+from .store import JobRecord, job_store
 
 
-app = FastAPI(title="AI智能试衣间 API", version="0.1.0")
+app = FastAPI(title="AI智能试衣间 API", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,6 +39,28 @@ app.mount("/static", StaticFiles(directory=str(storage_path)), name="static")
 
 provider = NanobananaProvider()
 
+app.include_router(auth_router)
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    # 幂等创建管理员（迁移由容器 entrypoint 的 alembic 负责）。
+    # 数据库未就绪时不阻断启动，便于无 DB 场景下仍能访问 /health。
+    try:
+        async with SessionLocal() as db:
+            await seed_admin(db)
+    except Exception as e:  # noqa: BLE001
+        print(f"[startup] seed_admin skipped: {type(e).__name__}: {e}", flush=True)
+
+
+def _ensure_owner(job: JobRecord | None, user: User) -> JobRecord:
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if user.role != "admin" and job.user_id != str(user.id):
+        # 不泄露他人任务是否存在
+        raise HTTPException(status_code=404, detail="job not found")
+    return job
+
 
 def _file_ext(name: str) -> str:
     base = os.path.basename(name)
@@ -42,7 +69,9 @@ def _file_ext(name: str) -> str:
 
 
 @app.post("/v1/assets/upload")
-async def upload_asset(file: UploadFile = File(...)) -> dict[str, Any]:
+async def upload_asset(
+    file: UploadFile = File(...), user: User = Depends(get_current_user)
+) -> dict[str, Any]:
     if file.size is not None and file.size > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="文件过大")
 
@@ -117,22 +146,21 @@ async def _run_job(job_id: str) -> None:
 
 
 @app.post("/v1/jobs", response_model=JobResponse)
-async def create_job(req: JobCreateRequest) -> JobResponse:
+async def create_job(req: JobCreateRequest, user: User = Depends(get_current_user)) -> JobResponse:
     record = await job_store.create(
         job_type=req.jobType,
         provider_preference=req.providerPreference,
         inputs=req.inputs,
         constraints=req.constraints.model_dump() if req.constraints else None,
+        user_id=str(user.id),
     )
     asyncio.create_task(_run_job(record.id))
     return JobResponse(jobId=record.id, status=record.status, stage=record.stage, progress=record.progress)
 
 
 @app.get("/v1/jobs/{job_id}", response_model=JobResponse)
-async def get_job(job_id: str) -> JobResponse:
-    job = await job_store.get(job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="job not found")
+async def get_job(job_id: str, user: User = Depends(get_current_user)) -> JobResponse:
+    job = _ensure_owner(await job_store.get(job_id), user)
     return JobResponse(
         jobId=job.id,
         status=job.status,
@@ -145,7 +173,8 @@ async def get_job(job_id: str) -> JobResponse:
 
 
 @app.get("/v1/jobs/{job_id}/events")
-async def job_events(job_id: str) -> StreamingResponse:
+async def job_events(job_id: str, user: User = Depends(get_current_user)) -> StreamingResponse:
+    _ensure_owner(await job_store.get(job_id), user)
     q = await job_store.events(job_id)
     if q is None:
         raise HTTPException(status_code=404, detail="job not found")
@@ -159,12 +188,12 @@ async def job_events(job_id: str) -> StreamingResponse:
 
 
 @app.get("/v1/debug/generation-logs")
-async def list_generation_logs(limit: int = 50) -> dict[str, Any]:
+async def list_generation_logs(limit: int = 50, _admin: User = Depends(require_admin)) -> dict[str, Any]:
     return {"logs": await generation_log_store.list(limit=limit)}
 
 
 @app.get("/v1/debug/generation-logs/{log_id}")
-async def get_generation_log(log_id: str) -> dict[str, Any]:
+async def get_generation_log(log_id: str, _admin: User = Depends(require_admin)) -> dict[str, Any]:
     record = await generation_log_store.get(log_id)
     if record is None:
         raise HTTPException(status_code=404, detail="generation log not found")

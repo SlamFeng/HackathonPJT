@@ -15,6 +15,7 @@ class JobRecord:
     id: str
     job_type: JobType
     provider_preference: ProviderPreference
+    user_id: str | None = None
     status: JobStatus = JobStatus.queued
     stage: str | None = None
     progress: float | None = None
@@ -39,12 +40,14 @@ class JobStore:
         provider_preference: ProviderPreference,
         inputs: dict[str, Any],
         constraints: dict[str, Any] | None,
+        user_id: str | None = None,
     ) -> JobRecord:
         job_id = str(uuid.uuid4())
         record = JobRecord(
             id=job_id,
             job_type=job_type,
             provider_preference=provider_preference,
+            user_id=user_id,
             inputs=inputs,
             constraints=constraints,
         )

@@ -14,9 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # 运行时生成的图片与日志目录（生产建议挂载为持久卷）
-RUN mkdir -p storage data
+RUN mkdir -p storage data && chmod +x entrypoint.sh
 
 EXPOSE 8000
 
-# main.py 内为 `from app.main import app`
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# entrypoint 先跑 alembic 迁移，再启动 uvicorn
+CMD ["./entrypoint.sh"]

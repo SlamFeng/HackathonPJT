@@ -1,4 +1,3 @@
-from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,7 +7,8 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
-    cors_origins: list[str] = ["http://localhost:3000"]
+    # 逗号分隔的允许来源（见 cors_origin_list）。用 str 避免 pydantic 对 list 强制 JSON 解析。
+    cors_origins: str = "http://localhost:3000"
 
     storage_dir: str = "storage"
     data_dir: str = "data"
@@ -17,6 +17,28 @@ class Settings(BaseSettings):
     nanobanana_endpoint: str | None = None
     # NanoBanana（Gemini 原生图像能力）默认模型：Gemini 3.1 Flash Image Preview
     nanobanana_model: str = "gemini-3.1-flash-image-preview"
+
+    # ===== Phase 1：数据库与鉴权 =====
+    # 本地/容器默认指向 compose 内的 db 服务；本机直跑可用 localhost
+    database_url: str = "postgresql+asyncpg://ailurus:ailurus@localhost:5432/ailurus"
+
+    session_secret: str = "dev-insecure-secret-change-me"
+    session_cookie_name: str = "ailurus_session"
+    session_ttl_hours: int = 24 * 30
+    # 生产（HTTPS）应设为 true
+    cookie_secure: bool = False
+    cookie_samesite: str = "lax"
+
+    # 首次启动自动创建的管理员（留空则不创建）
+    admin_email: str | None = None
+    admin_password: str | None = None
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        raw = self.cors_origins
+        if isinstance(raw, str):
+            return [o.strip() for o in raw.split(",") if o.strip()]
+        return raw
 
 
 settings = Settings()
