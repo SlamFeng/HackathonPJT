@@ -103,7 +103,8 @@ export async function uploadAsset(file: File) {
   });
   if (!res.ok) throw new Error(await res.text());
   const data = (await res.json()) as { assetId: string; url: string };
-  return { assetId: data.assetId, url: absUrl(data.url) };
+  // url: 绝对地址（用于直接展示）；rawUrl: 相对 /static 路径（用于落库，便于跨主机部署）
+  return { assetId: data.assetId, url: absUrl(data.url), rawUrl: data.url };
 }
 
 export async function createJob(input: {
