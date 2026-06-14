@@ -66,6 +66,17 @@ async def create_or_get(
     return job, True
 
 
+async def find_existing(db: AsyncSession, *, user: User, idempotency_key: str | None) -> Job | None:
+    """按幂等键查已有任务（用于在扣费前判重，避免重复提交被重复扣额度）。"""
+    if not idempotency_key:
+        return None
+    return (
+        await db.execute(
+            select(Job).where(Job.user_id == user.id, Job.idempotency_key == idempotency_key)
+        )
+    ).scalar_one_or_none()
+
+
 async def get_owned(db: AsyncSession, *, user: User, job_id: str) -> Job | None:
     jid = _uuid(job_id)
     if jid is None:

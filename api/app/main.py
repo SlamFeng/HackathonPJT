@@ -26,6 +26,7 @@ from .assets.router import router as assets_router
 from .auth.deps import get_current_user, require_admin
 from .auth.router import router as auth_router
 from .auth.service import seed_admin
+from .credits import service as credits_service
 from .db.base import SessionLocal, get_db, init_models, is_sqlite
 from .db.models import Job, User
 from .files import service as files_service
@@ -131,8 +132,18 @@ async def create_job(
     req: JobCreateRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> JobResponse:
     # 持久化为排队任务，由后台 worker 拉取执行（不再在请求线程内直接跑）。
-    # 携带 idempotencyKey 时，同一用户重复提交返回已存在任务，避免重复创建。
-    job, _created = await job_service.create_or_get(
+    # 幂等：重复提交相同 key 直接返回已有任务，且不重复扣额度。
+    existing = await job_service.find_existing(db, user=user, idempotency_key=req.idempotencyKey)
+    if existing is not None:
+        return _job_response(existing)
+
+    # 额度：入队前原子扣减；不足返回 402。
+    cost = credits_service.cost_for(req.jobType.value)
+    spend = await credits_service.try_spend(db, user=user, amount=cost, reason=f"job:{req.jobType.value}")
+    if spend is None:
+        raise HTTPException(status_code=402, detail="额度不足，请联系管理员充值后再生成")
+
+    job, created = await job_service.create_or_get(
         db,
         user=user,
         job_type=req.jobType.value,
@@ -141,6 +152,11 @@ async def create_job(
         constraints=req.constraints.model_dump() if req.constraints else None,
         idempotency_key=req.idempotencyKey,
     )
+    if created:
+        await credits_service.attach_job(db, event_id=spend.id, job_id=job.id)
+    else:
+        # 并发重复（极少）：退回刚扣的额度
+        await credits_service.grant(db, user_id=user.id, amount=cost, reason="dup_idempotency_refund")
     return _job_response(job)
 
 

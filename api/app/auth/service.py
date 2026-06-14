@@ -55,6 +55,14 @@ async def create_user(
     db.add(user)
     await db.commit()
     await db.refresh(user)
+    # Phase 5：新用户注册赠送额度（账本记一笔 grant）
+    from ..credits import service as credits_service  # 局部导入避免循环依赖
+
+    if settings.credit_signup_grant > 0:
+        await credits_service.grant(
+            db, user_id=user.id, amount=settings.credit_signup_grant, reason="signup_grant"
+        )
+        await db.refresh(user)
     return user
 
 

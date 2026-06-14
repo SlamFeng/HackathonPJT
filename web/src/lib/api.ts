@@ -143,7 +143,18 @@ export async function createJob(input: {
       idempotencyKey: input.idempotencyKey ?? newIdempotencyKey(),
     }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    let msg = await res.text();
+    try {
+      const d = JSON.parse(msg);
+      if (d?.detail) msg = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+    } catch {
+      /* keep raw */
+    }
+    throw new Error(msg);
+  }
+  // 扣了额度，通知顶栏刷新余额
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("credits-changed"));
   return (await res.json()) as JobResponse;
 }
 

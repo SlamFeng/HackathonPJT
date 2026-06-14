@@ -134,6 +134,28 @@ try { Invoke-WebRequest $furl -UseBasicParsing | Out-Null } catch { $cUnauth = [
 Check "未登录取图(401)" ($cUnauth -eq 401)
 Check "管理员可取任意图(200)" ((_code $furl $sessAdm) -eq 200)
 
+# 9.9) Phase 5 额度系统（用 bob：注册后无任何任务，余额应为初始值）
+$bobCredits = (Invoke-RestMethod "$base/v1/me/credits" -WebSession $sessB).credits
+Check "新用户初始额度=20" ($bobCredits -eq 20)
+$bobId = (Invoke-RestMethod "$base/v1/auth/me" -WebSession $sessB).id
+$g = Invoke-RestMethod "$base/v1/admin/users/$bobId/grant" -Method Post -ContentType "application/json" -WebSession $sessAdm `
+    -Body (@{ amount = -20; reason = "test_drain" } | ConvertTo-Json)
+Check "管理员发额度(-20)后余额0" ($g.credits -eq 0)
+$c402 = 0
+try { Invoke-WebRequest "$base/v1/jobs" -Method Post -ContentType "application/json" -WebSession $sessB -Body (@{ jobType = "avatar_generate"; inputs = @{ imageUrl = $up.url }; idempotencyKey = [Guid]::NewGuid().ToString() } | ConvertTo-Json) -UseBasicParsing | Out-Null }
+catch { $c402 = [int]$_.Exception.Response.StatusCode }
+Check "额度不足建任务被拒(402)" ($c402 -eq 402)
+$g2 = Invoke-RestMethod "$base/v1/admin/users/$bobId/grant" -Method Post -ContentType "application/json" -WebSession $sessAdm `
+    -Body (@{ amount = 5; reason = "topup" } | ConvertTo-Json)
+Check "充值后余额5" ($g2.credits -eq 5)
+$users = Invoke-RestMethod "$base/v1/admin/users" -WebSession $sessAdm
+Check "管理员可列用户(含额度)" (@($users).Count -ge 2 -and $null -ne $users[0].credits)
+$usage = Invoke-RestMethod "$base/v1/admin/usage" -WebSession $sessAdm
+Check "管理员可看用量统计" ($null -ne $usage.userCount -and $null -ne $usage.jobTotals)
+$c403 = 0
+try { Invoke-WebRequest "$base/v1/admin/users" -WebSession $sessB -UseBasicParsing | Out-Null } catch { $c403 = [int]$_.Exception.Response.StatusCode }
+Check "普通用户访问 admin(403)" ($c403 -eq 403)
+
 # 10) 登出后 /me -> 401
 Invoke-RestMethod "$base/v1/auth/logout" -Method Post -WebSession $sessA | Out-Null
 $codeLogout = 0

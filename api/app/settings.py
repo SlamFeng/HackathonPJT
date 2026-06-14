@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     worker_concurrency: int = 2
     worker_poll_interval_sec: float = 1.0
 
+    # ===== Phase 5：额度 =====
+    credit_signup_grant: int = 20  # 新用户注册赠送的额度
+
     @property
     def cors_origin_list(self) -> list[str]:
         raw = self.cors_origins

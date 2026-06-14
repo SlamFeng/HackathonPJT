@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel
+
+from ..db.models import Job, UsageEvent, User
 
 
 class SettingsOut(BaseModel):
@@ -20,3 +24,65 @@ class SettingsUpdate(BaseModel):
 class ConfigStatusOut(BaseModel):
     hasApiKey: bool
     model: str
+
+
+# ===== Phase 5 =====
+class AdminUserOut(BaseModel):
+    id: str
+    email: str
+    displayName: str | None
+    role: str
+    status: str
+    credits: int
+    createdAt: datetime
+    lastLoginAt: datetime | None
+
+    @classmethod
+    def of(cls, u: User) -> "AdminUserOut":
+        return cls(
+            id=str(u.id), email=u.email, displayName=u.display_name, role=u.role, status=u.status,
+            credits=u.credits, createdAt=u.created_at, lastLoginAt=u.last_login_at,
+        )
+
+
+class GrantRequest(BaseModel):
+    amount: int
+    reason: str | None = None
+
+
+class AdminJobOut(BaseModel):
+    id: str
+    userEmail: str
+    jobType: str
+    status: str
+    createdAt: datetime
+    finishedAt: datetime | None
+    errorMessage: str | None
+
+    @classmethod
+    def of(cls, j: Job, email: str) -> "AdminJobOut":
+        err = (j.error_json or {}).get("message") if j.error_json else None
+        return cls(
+            id=str(j.id), userEmail=email, jobType=j.job_type, status=j.status,
+            createdAt=j.created_at, finishedAt=j.finished_at, errorMessage=err,
+        )
+
+
+class UsageEventOut(BaseModel):
+    eventType: str
+    amount: int
+    reason: str | None
+    jobId: str | None
+    createdAt: datetime
+
+    @classmethod
+    def of(cls, e: UsageEvent) -> "UsageEventOut":
+        return cls(
+            eventType=e.event_type, amount=e.amount, reason=e.reason,
+            jobId=str(e.job_id) if e.job_id else None, createdAt=e.created_at,
+        )
+
+
+class MeCreditsOut(BaseModel):
+    credits: int
+    events: list[UsageEventOut]

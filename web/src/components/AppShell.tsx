@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 
 import { getConfigStatus } from "@/lib/admin";
+import { getMyCredits } from "@/lib/credits";
 import { useAuth } from "@/lib/auth-context";
 import { useHydrateAssets } from "@/lib/useHydrateAssets";
 
@@ -21,6 +22,9 @@ const nav = [
 
 // 仅管理员可见的导航项
 const adminNav = [
+  { href: "/admin/users", label: "用户管理" },
+  { href: "/admin/jobs", label: "任务监控" },
+  { href: "/admin/usage", label: "用量统计" },
   { href: "/admin/settings", label: "系统设置" },
   { href: "/debug/generation-logs", label: "生图日志" },
 ];
@@ -63,6 +67,28 @@ export function AppShell({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
       window.removeEventListener("config-changed", refetch);
+    };
+  }, [me, pathname]);
+
+  // 顶栏额度余额（生成扣费后通过 credits-changed 事件刷新）
+  const [credits, setCredits] = useState<number | null>(null);
+  useEffect(() => {
+    if (!me) {
+      setCredits(null);
+      return;
+    }
+    let cancelled = false;
+    const refetch = () =>
+      getMyCredits()
+        .then((c) => {
+          if (!cancelled) setCredits(c.credits);
+        })
+        .catch(() => {});
+    refetch();
+    window.addEventListener("credits-changed", refetch);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("credits-changed", refetch);
     };
   }, [me, pathname]);
 
@@ -130,6 +156,15 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-zinc-200/70 bg-zinc-50/80 px-5 py-4 backdrop-blur md:px-8">
           <div className="text-sm font-medium tracking-tight">AI 智能试衣间</div>
           <div className="flex items-center gap-3">
+            {credits !== null ? (
+              <Link
+                href="/credits"
+                className="rounded-full border border-zinc-300 px-3 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100"
+                title="我的额度"
+              >
+                额度 {credits}
+              </Link>
+            ) : null}
             <span className="hidden text-xs text-zinc-500 sm:inline">
               {me.displayName || me.email}
               {me.role === "admin" ? "（管理员）" : ""}

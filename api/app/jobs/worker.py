@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from ..credits import service as credits_service
 from ..db.base import SessionLocal
 from ..db.models import Job
 from ..files import service as files_service
@@ -52,6 +53,14 @@ async def _run_one(job: Job) -> None:
         except Exception as e:  # noqa: BLE001
             msg = str(e) or type(e).__name__
             await service.mark_failed(db, job_id, error={"code": "INFERENCE_FAILED", "message": msg})
+            # Phase 5：失败自动退款（按 job 去重，不会重复退）
+            try:
+                await credits_service.refund_job(
+                    db, user_id=job.user_id, job_id=job_id,
+                    amount=credits_service.cost_for(job_type), reason="job_failed_refund",
+                )
+            except Exception as re:  # noqa: BLE001
+                print(f"[worker] refund failed for {job_id}: {type(re).__name__}: {re}", flush=True)
 
 
 async def _worker_loop(stop: asyncio.Event, poll_interval: float) -> None:
