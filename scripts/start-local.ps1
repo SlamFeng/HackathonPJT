@@ -86,12 +86,13 @@ try {
     # ---------- 启动后端窗口 ----------
     Write-Step "启动后端 API（端口 8000）"
     $apiInner = @(
+        "`$host.UI.RawUI.WindowTitle='● 后端 API（端口 8000）— 关闭此窗口 = 停止后端'",
         "Set-Location '$ApiDir'",
         "`$env:DATABASE_URL='sqlite+aiosqlite:///./local.db'",
         "`$env:ADMIN_EMAIL='admin@ailurus.com'",
         "`$env:ADMIN_PASSWORD='admin12345'",
         "`$env:CORS_ORIGINS='http://localhost:3000'",
-        "Write-Host '后端 API 运行中：http://localhost:8000  (关闭此窗口即停止)' -ForegroundColor Green",
+        "Write-Host '后端 API 运行中：http://localhost:8000  (关闭此窗口即停止后端)' -ForegroundColor Green",
         ".\.venv\Scripts\uvicorn.exe main:app --host 0.0.0.0 --port 8000"
     ) -join "; "
     Start-Process powershell -ArgumentList "-NoExit", "-NoProfile", "-Command", $apiInner
@@ -100,9 +101,10 @@ try {
     # ---------- 启动前端窗口 ----------
     Write-Step "启动前端 Web（端口 3000）"
     $webInner = @(
+        "`$host.UI.RawUI.WindowTitle='● 前端 Web（端口 3000）— 关闭此窗口 = 停止前端'",
         "Set-Location '$WebDir'",
         "`$env:NEXT_PUBLIC_API_BASE_URL='http://localhost:8000'",
-        "Write-Host '前端 Web 运行中：http://localhost:3000  (关闭此窗口即停止)' -ForegroundColor Green",
+        "Write-Host '前端 Web 运行中：http://localhost:3000  (关闭此窗口即停止前端；提示见窗口标题栏)' -ForegroundColor Green",
         "npm run dev"
     ) -join "; "
     Start-Process powershell -ArgumentList "-NoExit", "-NoProfile", "-Command", $webInner
