@@ -88,6 +88,7 @@ try {
     $apiInner = @(
         "`$host.UI.RawUI.WindowTitle='● 后端 API（端口 8000）— 关闭此窗口 = 停止后端'",
         "Set-Location '$ApiDir'",
+        "`$env:PYTHONUTF8='1'",
         "`$env:DATABASE_URL='sqlite+aiosqlite:///./local.db'",
         "`$env:ADMIN_EMAIL='admin@ailurus.com'",
         "`$env:ADMIN_PASSWORD='admin12345'",

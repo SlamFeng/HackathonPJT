@@ -17,6 +17,10 @@ node_modules/
 *.db
 *.sqlite3
 
+### Local test scratch (本地生成测试的输入/结果，不入库)
+_testinputs/
+_genreport/
+
 ### Outputs
 storage/
 data/

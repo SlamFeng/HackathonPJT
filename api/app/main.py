@@ -2,7 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 import uuid
+
+# 某些非 UTF-8 控制台（日文 cp932、中文 GBK 等）无法编码调试日志里的中文，
+# 会让 print(prompt) 抛 UnicodeEncodeError，进而拖垮整个生成任务。
+# 这里在应用入口把 stdout/stderr 强制改为 UTF-8（容器/Linux 本就是 UTF-8，无副作用）。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    except Exception:
+        pass
 from pathlib import Path
 from typing import Any, AsyncIterator
 

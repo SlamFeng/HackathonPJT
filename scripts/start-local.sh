@@ -67,6 +67,7 @@ ok "前端依赖就绪"
 # ---------- 启动后端 ----------
 step "启动后端 API（端口 8000）"
 cd "$API_DIR"
+export PYTHONUTF8=1
 export DATABASE_URL="sqlite+aiosqlite:///./local.db"
 export ADMIN_EMAIL="admin@ailurus.com"
 export ADMIN_PASSWORD="admin12345"
