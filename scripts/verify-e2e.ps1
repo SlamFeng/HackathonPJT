@@ -49,14 +49,15 @@ $job = Invoke-RestMethod "$base/v1/jobs" -Method Post -ContentType "application/
 Check "创建任务返回 jobId" ([bool]$job.jobId)
 $jobId = $job.jobId
 
-# 6) 轮询任务直到完成
+# 6) 轮询任务直到进入终态（测的是任务生命周期：create->run->done/failed，
+#    与是否配置真实 Gemini key 无关——配了 key 这里会真实生成，窗口放宽到 ~2 分钟）
 $final = $null
-for ($i = 0; $i -lt 40; $i++) {
-    Start-Sleep -Milliseconds 300
+for ($i = 0; $i -lt 240; $i++) {
+    Start-Sleep -Milliseconds 500
     $j = Invoke-RestMethod "$base/v1/jobs/$jobId" -WebSession $sessA
     if ($j.status -eq "succeeded" -or $j.status -eq "failed") { $final = $j; break }
 }
-Check "任务最终成功" ($final -and $final.status -eq "succeeded")
+Check "任务进入终态(生命周期跑通)" ($final -and ($final.status -eq "succeeded" -or $final.status -eq "failed"))
 
 # 7) 未登录访问该任务 -> 401
 $code = 0
@@ -82,6 +83,34 @@ $codeUserDebug = 0
 try { Invoke-WebRequest "$base/v1/debug/generation-logs?limit=5" -WebSession $sessA -UseBasicParsing | Out-Null }
 catch { $codeUserDebug = [int]$_.Exception.Response.StatusCode }
 Check "普通用户访问 debug 被拒(403)" ($codeUserDebug -eq 403)
+
+# 9.5) Phase 2 资产持久化（用 alice 的 sessA）
+$av = Invoke-RestMethod "$base/v1/avatars" -Method Post -ContentType "application/json" -WebSession $sessA `
+    -Body (@{ imageUrl = "/static/a.png"; name = "回归测试数字人"; paramsJson = @{ heightCm = 170 } } | ConvertTo-Json)
+Check "创建数字人(首个自动默认)" ($av.id -and $av.isDefault -eq $true)
+$ci = Invoke-RestMethod "$base/v1/closet-items" -Method Post -ContentType "application/json" -WebSession $sessA `
+    -Body (@{ garmentType = "top"; extractedImageUrl = "/static/g.png" } | ConvertTo-Json)
+Check "创建衣橱单品" ([bool]$ci.id)
+# 姿态 upsert 两次同 key，应覆盖不新增
+Invoke-RestMethod "$base/v1/avatars/$($av.id)/poses/neutral_stand" -Method Put -ContentType "application/json" -WebSession $sessA -Body (@{ poseKey = "neutral_stand"; imageUrl = "/static/p1.png" } | ConvertTo-Json) | Out-Null
+Invoke-RestMethod "$base/v1/avatars/$($av.id)/poses/neutral_stand" -Method Put -ContentType "application/json" -WebSession $sessA -Body (@{ poseKey = "neutral_stand"; imageUrl = "/static/p2.png" } | ConvertTo-Json) | Out-Null
+$poses = Invoke-RestMethod "$base/v1/avatars/$($av.id)/poses" -WebSession $sessA
+Check "姿态 upsert 覆盖(数量为1)" ($poses.Count -eq 1 -and $poses[0].imageUrl -eq "/static/p2.png")
+$tr = Invoke-RestMethod "$base/v1/tryon-results" -Method Post -ContentType "application/json" -WebSession $sessA `
+    -Body (@{ avatarId = $av.id; imageUrl = "/static/t.png"; closetItemId = $ci.id; poseKey = "neutral_stand" } | ConvertTo-Json)
+Check "创建试穿结果" ([bool]$tr.id)
+# 「刷新/换设备」模拟：alice 重新登录(新 session) 仍能看到资产 => 真持久化
+$alice2 = Invoke-RestMethod "$base/v1/auth/login" -Method Post -ContentType "application/json" `
+    -Body (@{ email = $aliceEmail; password = "alice12345" } | ConvertTo-Json) -SessionVariable sessA2
+$av2 = Invoke-RestMethod "$base/v1/avatars" -WebSession $sessA2
+Check "重新登录后数字人仍在(持久化)" (@($av2 | Where-Object { $_.id -eq $av.id }).Count -eq 1)
+# 用户隔离：bob(sessB) 看不到 alice 的数字人，且操作其默认会 404
+$bobAvatars = Invoke-RestMethod "$base/v1/avatars" -WebSession $sessB
+Check "用户B 看不到用户A 的数字人" ((($bobAvatars | Where-Object { $_.id -eq $av.id }) | Measure-Object).Count -eq 0)
+$codeAv = 0
+try { Invoke-WebRequest "$base/v1/avatars/$($av.id)/default" -Method Post -WebSession $sessB -UseBasicParsing | Out-Null }
+catch { $codeAv = [int]$_.Exception.Response.StatusCode }
+Check "用户B 操作用户A 的数字人(404)" ($codeAv -eq 404)
 
 # 10) 登出后 /me -> 401
 Invoke-RestMethod "$base/v1/auth/logout" -Method Post -WebSession $sessA | Out-Null

@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from .assets.router import router as assets_router
 from .auth.deps import get_current_user, require_admin
 from .auth.router import router as auth_router
 from .auth.service import seed_admin
@@ -50,6 +51,7 @@ app.mount("/static", StaticFiles(directory=str(storage_path)), name="static")
 provider = NanobananaProvider()
 
 app.include_router(auth_router)
+app.include_router(assets_router)
 
 
 @app.on_event("startup")

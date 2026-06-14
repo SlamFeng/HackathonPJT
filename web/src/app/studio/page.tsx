@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 
 import { absUrl, createJob, waitForImageJob } from "@/lib/api";
+import { createTryon, upsertPose } from "@/lib/assets";
 import {
   ClosetCategory,
   ClosetItem,
@@ -76,6 +77,14 @@ export default function StudioPage() {
         progress: 1,
         imageUrl: absUrl(image.url),
       });
+      // 落库：覆盖该数字人的这个姿态
+      if (avatar.avatarId) {
+        try {
+          await upsertPose(avatar.avatarId, targetPoseId, { imageUrl: image.url, jobId: job.jobId });
+        } catch {
+          /* 持久化失败不影响展示 */
+        }
+      }
     } catch (e) {
       setPoseRender(targetPoseId, {
         status: "failed",
@@ -128,6 +137,20 @@ export default function StudioPage() {
         overlayGarmentUrl: overlay ? absUrl(overlay) : null,
         overlayTransform: transform,
       });
+      // 落库：保存试穿结果（按 数字人+姿态+单品 唯一，重新试穿覆盖）
+      if (avatar.avatarId && !isMock) {
+        try {
+          await createTryon({
+            avatarId: avatar.avatarId,
+            imageUrl: image.url,
+            closetItemId: garment.id,
+            poseKey: poseId,
+            jobId: job.jobId,
+          });
+        } catch {
+          /* 持久化失败不影响展示 */
+        }
+      }
     } catch (e) {
       setTryOnRender(selectedTryOnKey, {
         status: "failed",

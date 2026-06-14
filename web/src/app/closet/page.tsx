@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { absUrl, createJob, uploadAsset, waitForImageJob } from "@/lib/api";
+import { createClosetItem, deleteClosetItem, toggleFavoriteApi } from "@/lib/assets";
 import { ClosetCategory, ClosetItem, useAppStore } from "@/stores/useAppStore";
 
 const categories: Array<{ id: ClosetCategory; label: string }> = [
@@ -21,6 +22,25 @@ export default function ClosetPage() {
   const closet = useAppStore((s) => s.closet);
   const upsert = useAppStore((s) => s.upsertClosetItem);
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
+  const removeClosetItem = useAppStore((s) => s.removeClosetItem);
+
+  async function handleToggleFavorite(id: string) {
+    toggleFavorite(id); // 乐观更新
+    try {
+      await toggleFavoriteApi(id);
+    } catch {
+      toggleFavorite(id); // 失败回滚
+    }
+  }
+
+  async function handleDelete(id: string) {
+    removeClosetItem(id); // 乐观更新
+    try {
+      await deleteClosetItem(id);
+    } catch {
+      /* 删除失败：下次刷新会从服务端恢复 */
+    }
+  }
 
   const [file, setFile] = useState<File | null>(null);
   const [category, setCategory] = useState<ClosetCategory>("top");
@@ -50,12 +70,19 @@ export default function ClosetPage() {
         onUpdate: (latest) => setProgress(Math.max(latest.progress ?? 0.15, 0.15)),
       });
 
-      const item: ClosetItem = {
-        id: uploaded.assetId,
-        category,
-        imageUrl: absUrl(image.url),
+      // 落库：保存为衣橱单品（extractedImageUrl 用相对 /static 路径）
+      const saved = await createClosetItem({
+        garmentType: category,
+        extractedImageUrl: image.url,
         originalImageUrl: uploaded.url,
-        favorited: false,
+        extractJobId: job.jobId,
+      });
+      const item: ClosetItem = {
+        id: saved.id,
+        category,
+        imageUrl: absUrl(saved.extractedImageUrl),
+        originalImageUrl: saved.originalImageUrl ? absUrl(saved.originalImageUrl) : undefined,
+        favorited: saved.favorited,
       };
       upsert(item);
       setFile(null);
@@ -137,15 +164,23 @@ export default function ClosetPage() {
                 <div className="text-xs text-zinc-500">
                   {categories.find((c) => c.id === item.category)?.label ?? item.category}
                 </div>
-                <button
-                  className={[
-                    "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                    item.favorited ? "bg-zinc-900 text-zinc-50" : "border border-zinc-200 text-zinc-700 hover:bg-zinc-50",
-                  ].join(" ")}
-                  onClick={() => toggleFavorite(item.id)}
-                >
-                  {item.favorited ? "已收藏" : "收藏"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    className={[
+                      "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                      item.favorited ? "bg-zinc-900 text-zinc-50" : "border border-zinc-200 text-zinc-700 hover:bg-zinc-50",
+                    ].join(" ")}
+                    onClick={() => handleToggleFavorite(item.id)}
+                  >
+                    {item.favorited ? "已收藏" : "收藏"}
+                  </button>
+                  <button
+                    className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-500 transition-colors hover:border-red-200 hover:text-red-600"
+                    onClick={() => handleDelete(item.id)}
+                  >
+                    删除
+                  </button>
+                </div>
               </div>
               <img src={item.imageUrl} alt="garment" className="mt-3 h-56 w-full rounded-2xl bg-zinc-50 object-contain" />
             </div>

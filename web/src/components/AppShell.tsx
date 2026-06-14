@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect } from "react";
 
 import { useAuth } from "@/lib/auth-context";
+import { useHydrateAssets } from "@/lib/useHydrateAssets";
 
 const nav = [
   { href: "/", label: "门户" },
@@ -12,6 +13,7 @@ const nav = [
   { href: "/avatar", label: "数字人" },
   { href: "/studio", label: "工作室" },
   { href: "/closet", label: "衣橱" },
+  { href: "/history", label: "历史" },
   { href: "/orders", label: "订单" },
   { href: "/stylist", label: "穿搭顾问" },
 ];
@@ -31,6 +33,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { me, loading, signOut } = useAuth();
+  // 登录后把该用户的数字人/衣橱/姿态/试穿从后端载入（每个用户一次）
+  useHydrateAssets();
 
   const isPublic = PUBLIC_ROUTES.has(pathname);
 

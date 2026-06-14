@@ -6,7 +6,7 @@ from datetime import datetime
 # 用 SQLAlchemy 2.0 跨方言的 Uuid：Postgres 上编译为原生 UUID，
 # SQLite 上编译为 CHAR(32)，从而同一份模型既能跑容器里的 Postgres，
 # 也能跑本地零配置的 SQLite。
-from sqlalchemy import DateTime, ForeignKey, String, Uuid, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -43,3 +43,87 @@ class UserSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="sessions")
+
+
+# ===== Phase 2：资产持久化（数字人 / 衣橱 / 姿态 / 试穿） =====
+# 图片文件仍保存在 api/storage/ 并通过 /static 提供，这里只持久化「关系数据」：
+# 谁的、哪个数字人、哪个姿态、哪件衣服、对应哪张图 url。
+
+
+class Avatar(Base):
+    __tablename__ = "avatars"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str | None] = mapped_column(String(120))
+    image_url: Mapped[str] = mapped_column(Text, nullable=False)
+    params_json: Mapped[dict | None] = mapped_column(JSON)
+    source_job_id: Mapped[str | None] = mapped_column(String(64))
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", server_default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ClosetItem(Base):
+    __tablename__ = "closet_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    name: Mapped[str | None] = mapped_column(String(120))
+    garment_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    original_image_url: Mapped[str | None] = mapped_column(Text)
+    extracted_image_url: Mapped[str] = mapped_column(Text, nullable=False)
+    extract_job_id: Mapped[str | None] = mapped_column(String(64))
+    favorited: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", server_default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class PoseRender(Base):
+    __tablename__ = "pose_renders"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    avatar_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("avatars.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    pose_key: Mapped[str] = mapped_column(String(40), nullable=False)
+    image_url: Mapped[str] = mapped_column(Text, nullable=False)
+    job_id: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="succeeded", server_default="succeeded")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class TryonResult(Base):
+    __tablename__ = "tryon_results"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    avatar_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("avatars.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    pose_render_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("pose_renders.id", ondelete="SET NULL")
+    )
+    closet_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("closet_items.id", ondelete="SET NULL")
+    )
+    pose_key: Mapped[str | None] = mapped_column(String(40))
+    image_url: Mapped[str] = mapped_column(Text, nullable=False)
+    job_id: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="succeeded", server_default="succeeded")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
