@@ -158,6 +158,84 @@ export async function createJob(input: {
   return (await res.json()) as JobResponse;
 }
 
+export type BatchJobItem = {
+  jobType: JobType;
+  providerPreference?: ProviderPreference;
+  inputs: Record<string, unknown>;
+  constraints?: {
+    identityLock?: boolean;
+    poseLock?: boolean;
+    garmentLock?: boolean;
+    seed?: number;
+    qualityLevel?: "standard" | "high";
+    timeoutSec?: number;
+  };
+  idempotencyKey?: string;
+};
+
+export type BatchJobResponse = {
+  jobs: JobResponse[];
+  charged: number;
+  duplicates: number;
+};
+
+// 批量出图：一次提交多个生成任务。后端先按总额度原子扣减，余额不足整批拒绝（402）。
+export async function createJobsBatch(items: BatchJobItem[]) {
+  const res = await apiFetch(`${API_BASE}/v1/jobs/batch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jobs: items.map((it) => ({
+        jobType: it.jobType,
+        providerPreference: it.providerPreference ?? "nanobanana_first",
+        inputs: it.inputs,
+        constraints: it.constraints ?? {},
+        idempotencyKey: it.idempotencyKey ?? newIdempotencyKey(),
+      })),
+    }),
+  });
+  if (!res.ok) {
+    let msg = await res.text();
+    try {
+      const d = JSON.parse(msg);
+      if (d?.detail) msg = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+    } catch {
+      /* keep raw */
+    }
+    throw new Error(msg);
+  }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("credits-changed"));
+  return (await res.json()) as BatchJobResponse;
+}
+
+// 把若干任务的成功出图打包成 ZIP 并触发浏览器下载。
+export async function exportJobsZip(jobIds: string[]) {
+  const res = await apiFetch(`${API_BASE}/v1/exports/zip`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobIds }),
+  });
+  if (!res.ok) {
+    let msg = await res.text();
+    try {
+      const d = JSON.parse(msg);
+      if (d?.detail) msg = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+    } catch {
+      /* keep raw */
+    }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "tryon_batch.zip";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function getJob(jobId: string) {
   const res = await apiFetch(`${API_BASE}/v1/jobs/${jobId}`, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());

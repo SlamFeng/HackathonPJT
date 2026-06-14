@@ -64,6 +64,26 @@ class JobCreateRequest(BaseModel):
     idempotencyKey: str | None = None
 
 
+class BatchJobCreateRequest(BaseModel):
+    """批量出图：一次提交多个生成任务（同一商家给一批新品出图）。"""
+
+    jobs: list[JobCreateRequest] = Field(..., min_length=1, max_length=50)
+
+
+class BatchJobResponse(BaseModel):
+    jobs: list["JobResponse"]
+    # 本次实际新建任务所扣的总额度（幂等命中的已存在任务不计费）
+    charged: int
+    # 命中幂等键、复用已存在任务的数量（未重复扣费）
+    duplicates: int
+
+
+class ExportZipRequest(BaseModel):
+    """把若干任务的成功出图打包成一个 ZIP 下载。"""
+
+    jobIds: list[str] = Field(..., min_length=1, max_length=200)
+
+
 class JobArtifact(BaseModel):
     kind: str
     # url 允许为空：当生成无有效图片输出（如降级/兜底）时避免序列化 500
@@ -92,3 +112,7 @@ class JobResponse(BaseModel):
     artifacts: list[JobArtifact] | None = None
     qualityScores: QualityScores | None = None
     error: JobError | None = None
+
+
+# BatchJobResponse 用前向引用引用了 JobResponse，这里在两者都定义后补全解析。
+BatchJobResponse.model_rebuild()

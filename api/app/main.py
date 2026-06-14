@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
 import sys
+import zipfile
 
 # 某些非 UTF-8 控制台（日文 cp932、中文 GBK 等）无法编码调试日志里的中文，
 # 会让 print(prompt) 抛 UnicodeEncodeError，进而拖垮整个生成任务。
@@ -15,7 +17,7 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 from typing import Any, AsyncIterator
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +36,13 @@ from .files.router import router as files_router
 from .generation_logs import generation_log_store
 from .jobs import service as job_service
 from .jobs import worker as job_worker
-from .models import JobCreateRequest, JobResponse
+from .models import (
+    BatchJobCreateRequest,
+    BatchJobResponse,
+    ExportZipRequest,
+    JobCreateRequest,
+    JobResponse,
+)
 from .settings import settings
 from .storage import content_type_for, storage
 
@@ -158,6 +166,118 @@ async def create_job(
         # 并发重复（极少）：退回刚扣的额度
         await credits_service.grant(db, user_id=user.id, amount=cost, reason="dup_idempotency_refund")
     return _job_response(job)
+
+
+@app.post("/v1/jobs/batch", response_model=BatchJobResponse)
+async def create_jobs_batch(
+    req: BatchJobCreateRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> BatchJobResponse:
+    """批量出图：一次入队多个生成任务。
+
+    计费策略：先按"新任务"汇总总额度并一次性原子扣减——余额不足则整批拒绝（402），
+    一张都不创建，便于商家在动批量前就知道能不能负担；幂等命中的已存在任务不计费。
+    每个任务失败时仍由 worker 按任务单独退款（沿用现有去重退款机制）。
+    """
+    if len(req.jobs) > 50:
+        raise HTTPException(status_code=400, detail="单次批量最多 50 个任务")
+
+    # 第一遍：区分"幂等命中的已存在任务"与"需新建任务"，并累计新建任务应扣总额度。
+    plan: list[tuple[JobCreateRequest, Job | None, int]] = []
+    total_cost = 0
+    for item in req.jobs:
+        existing = await job_service.find_existing(db, user=user, idempotency_key=item.idempotencyKey)
+        if existing is not None:
+            plan.append((item, existing, 0))
+        else:
+            cost = credits_service.cost_for(item.jobType.value)
+            total_cost += cost
+            plan.append((item, None, cost))
+
+    new_count = sum(1 for _, existing, _ in plan if existing is None)
+    if total_cost > 0:
+        bal = await credits_service.balance(db, user.id)
+        spend = await credits_service.try_spend(
+            db, user=user, amount=total_cost, reason=f"batch:{new_count} jobs"
+        )
+        if spend is None:
+            raise HTTPException(
+                status_code=402,
+                detail=f"额度不足：本次批量需 {total_cost} 额度，当前余额 {bal}。请联系管理员充值后再生成。",
+            )
+
+    # 创建任务；unaccounted = 已扣但尚未"确认消耗或已退回"的额度，出异常时整体退回。
+    responses: list[JobResponse] = []
+    charged = 0
+    unaccounted = total_cost
+    try:
+        for item, existing, cost in plan:
+            if existing is not None:
+                responses.append(_job_response(existing))
+                continue
+            job, created = await job_service.create_or_get(
+                db,
+                user=user,
+                job_type=item.jobType.value,
+                provider_preference=item.providerPreference.value if item.providerPreference else None,
+                inputs=item.inputs,
+                constraints=item.constraints.model_dump() if item.constraints else None,
+                idempotency_key=item.idempotencyKey,
+            )
+            if created:
+                charged += cost
+                unaccounted -= cost
+            else:
+                # 并发下被其它请求抢先创建（幂等）：退回这一份，避免重复计费
+                await credits_service.grant(db, user_id=user.id, amount=cost, reason="batch_dup_refund")
+                unaccounted -= cost
+            responses.append(_job_response(job))
+    except Exception:
+        if unaccounted > 0:
+            await credits_service.grant(
+                db, user_id=user.id, amount=unaccounted, reason="batch_create_error_refund"
+            )
+        raise
+
+    return BatchJobResponse(jobs=responses, charged=charged, duplicates=len(plan) - new_count)
+
+
+@app.post("/v1/exports/zip")
+async def export_jobs_zip(
+    req: ExportZipRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> Response:
+    """把若干任务的成功出图打包成 ZIP 下载（批量出图的最后一公里）。"""
+    buf = io.BytesIO()
+    count = 0
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for idx, jid in enumerate(req.jobIds):
+            job = await job_service.get_owned(db, user=user, job_id=jid)
+            if job is None or job.status != "succeeded":
+                continue
+            artifacts = job.artifacts_json or []
+            image = next((a for a in artifacts if a.get("kind") == "image" and a.get("url")), None)
+            if image is None:
+                continue
+            key = files_service.key_from_url(image["url"])
+            if not key or not await storage.exists(key):
+                continue
+            data = await storage.read(key)
+            ext = os.path.splitext(key)[1] or ".png"
+            inputs = job.input_json or {}
+            parts = [f"{idx + 1:02d}", job.job_type]
+            pose = inputs.get("poseId")
+            if pose:
+                parts.append(str(pose))
+            zf.writestr("_".join(parts) + ext, data)
+            count += 1
+
+    if count == 0:
+        raise HTTPException(status_code=404, detail="没有可导出的成功结果")
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="tryon_batch.zip"'},
+    )
 
 
 @app.get("/v1/jobs/{job_id}", response_model=JobResponse)
