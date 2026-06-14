@@ -21,3 +21,20 @@ SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSe
 async def get_db() -> AsyncIterator[AsyncSession]:
     async with SessionLocal() as session:
         yield session
+
+
+def is_sqlite() -> bool:
+    return settings.database_url.startswith("sqlite")
+
+
+async def init_models() -> None:
+    """SQLite 本地零配置模式下自动建表。
+
+    Postgres / 容器部署走 Alembic 迁移（entrypoint.sh 里 alembic upgrade head），
+    不会调用这里；本机直接双击启动脚本时用 SQLite，没有迁移流程，靠它建表。
+    导入 models 以确保所有表都注册到 Base.metadata。
+    """
+    from . import models  # noqa: F401
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)

@@ -13,6 +13,10 @@ node_modules/
 .env.*
 !.env.example
 
+### Local SQLite database (本地零配置开发数据库)
+*.db
+*.sqlite3
+
 ### Outputs
 storage/
 data/

@@ -23,6 +23,17 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_aware_utc(dt: datetime) -> datetime:
+    """把可能为 naive 的时间统一成 UTC aware。
+
+    Postgres 的 timestamptz 读回来是 aware；SQLite 不存时区，读回来是 naive。
+    本地 SQLite 模式下若不归一化，naive 与 aware 比较会抛 TypeError。
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     res = await db.execute(select(User).where(User.email == email.lower()))
     return res.scalar_one_or_none()
@@ -78,7 +89,7 @@ async def resolve_session(db: AsyncSession, token: str) -> User | None:
     session = res.scalar_one_or_none()
     if session is None or session.revoked_at is not None:
         return None
-    if session.expires_at <= _now():
+    if _as_aware_utc(session.expires_at) <= _now():
         return None
     user = await db.get(User, session.user_id)
     if user is None or user.status != "active":

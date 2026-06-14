@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from .auth.deps import get_current_user, require_admin
 from .auth.router import router as auth_router
 from .auth.service import seed_admin
-from .db.base import SessionLocal
+from .db.base import SessionLocal, init_models, is_sqlite
 from .db.models import User
 from .generation_logs import generation_log_store
 from .inference.nanobanana import NanobananaProvider
@@ -44,6 +44,13 @@ app.include_router(auth_router)
 
 @app.on_event("startup")
 async def _startup() -> None:
+    # SQLite 本地零配置模式：没有 alembic 迁移流程，启动时自动建表。
+    # Postgres / 容器模式由 entrypoint.sh 的 alembic upgrade head 负责，跳过这里。
+    if is_sqlite():
+        try:
+            await init_models()
+        except Exception as e:  # noqa: BLE001
+            print(f"[startup] init_models skipped: {type(e).__name__}: {e}", flush=True)
     # 幂等创建管理员（迁移由容器 entrypoint 的 alembic 负责）。
     # 数据库未就绪时不阻断启动，便于无 DB 场景下仍能访问 /health。
     try:
