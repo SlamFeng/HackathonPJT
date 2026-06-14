@@ -41,7 +41,7 @@ $body = (
 $up = Invoke-RestMethod "$base/v1/assets/upload" -Method Post -WebSession $sessA `
     -ContentType "multipart/form-data; boundary=$boundary" -Body $body
 Check "上传返回 assetId" ([bool]$up.assetId)
-Check "上传返回 url" ($up.url -like "/static/*")
+Check "上传返回 url" ($up.url -like "/v1/files/*")
 
 # 5) 创建任务（avatar_generate，mock 模式无需真实 Key）
 $jobBody = @{ jobType = "avatar_generate"; inputs = @{ imageUrl = $up.url } } | ConvertTo-Json
@@ -122,6 +122,17 @@ $codeAv = 0
 try { Invoke-WebRequest "$base/v1/avatars/$($av.id)/default" -Method Post -WebSession $sessB -UseBasicParsing | Out-Null }
 catch { $codeAv = [int]$_.Exception.Response.StatusCode }
 Check "用户B 操作用户A 的数字人(404)" ($codeAv -eq 404)
+
+# 9.8) Phase 4 图片访问控制（alice 在步骤4上传的 $up.url）
+function _code($u, $ws) { try { return (Invoke-WebRequest $u -WebSession $ws -UseBasicParsing).StatusCode } catch { return [int]$_.Exception.Response.StatusCode } }
+$furl = "$base$($up.url)"
+Check "上传图返回 /v1/files URL" ($up.url -like "/v1/files/*")
+Check "拥有者可取自己的图(200)" ((_code $furl $sessA2) -eq 200)
+Check "他人不能取(403)" ((_code $furl $sessB) -eq 403)
+$cUnauth = 0
+try { Invoke-WebRequest $furl -UseBasicParsing | Out-Null } catch { $cUnauth = [int]$_.Exception.Response.StatusCode }
+Check "未登录取图(401)" ($cUnauth -eq 401)
+Check "管理员可取任意图(200)" ((_code $furl $sessAdm) -eq 200)
 
 # 10) 登出后 /me -> 401
 Invoke-RestMethod "$base/v1/auth/logout" -Method Post -WebSession $sessA | Out-Null

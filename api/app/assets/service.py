@@ -7,6 +7,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.models import Avatar, ClosetItem, PoseRender, TryonResult, User
+from ..files import service as files_service
 
 
 class AssetError(Exception):
@@ -68,8 +69,10 @@ async def set_default_avatar(db: AsyncSession, *, user: User, avatar_id: str) ->
 async def delete_avatar(db: AsyncSession, *, user: User, avatar_id: str) -> None:
     avatar = await get_owned_avatar(db, user=user, avatar_id=avatar_id)
     was_default = avatar.is_default
+    image_url = avatar.image_url
     await db.delete(avatar)
     await db.commit()
+    await files_service.delete_by_url(db, image_url)  # 删后图片不可再访问
     if was_default:
         # 删掉的是默认数字人，把最近一个补为默认
         latest = (await db.execute(
@@ -106,8 +109,11 @@ async def delete_closet_item(db: AsyncSession, *, user: User, item_id: str) -> N
     item = await db.get(ClosetItem, _uuid(item_id))
     if item is None or item.user_id != user.id:
         raise AssetError("NOT_FOUND", "单品不存在")
+    urls = [item.extracted_image_url, item.original_image_url]
     await db.delete(item)
     await db.commit()
+    for u in urls:
+        await files_service.delete_by_url(db, u)
 
 
 async def toggle_favorite(db: AsyncSession, *, user: User, item_id: str) -> ClosetItem:
@@ -197,5 +203,7 @@ async def delete_tryon(db: AsyncSession, *, user: User, tryon_id: str) -> None:
     tryon = await db.get(TryonResult, _uuid(tryon_id))
     if tryon is None or tryon.user_id != user.id:
         raise AssetError("NOT_FOUND", "试穿记录不存在")
+    image_url = tryon.image_url
     await db.delete(tryon)
     await db.commit()
+    await files_service.delete_by_url(db, image_url)

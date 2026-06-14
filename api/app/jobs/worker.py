@@ -5,6 +5,7 @@ from typing import Any
 
 from ..db.base import SessionLocal
 from ..db.models import Job
+from ..files import service as files_service
 from ..inference.nanobanana import NanobananaProvider
 from . import service
 
@@ -43,6 +44,8 @@ async def _run_one(job: Job) -> None:
         try:
             await service.set_progress(db, job_id, stage="inference", progress=0.2)
             result = await _call_provider(job_type, inputs, constraints, str(job_id))
+            # Phase 4：把最终产出图登记归属到任务所属用户（仅本人/管理员可访问）
+            await files_service.register_url(db, url=result.get("imageUrl"), user_id=job.user_id, content_type=None)
             artifacts = [{"kind": "image", "url": result.get("imageUrl"), "meta": result.get("meta")}]
             quality = _QUALITY.get(job_type, {"artifactScore": 0.8})
             await service.mark_succeeded(db, job_id, artifacts=artifacts, quality=quality)

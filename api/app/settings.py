@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     storage_dir: str = "storage"
     data_dir: str = "data"
 
+    # 图片存储后端：local（默认零配置）。上云时改 s3 并补 S3Storage（S3/R2/OSS 兼容）。
+    storage_backend: str = "local"
+
     nanobanana_api_key: str | None = None
     nanobanana_endpoint: str | None = None
     # NanoBanana（Gemini 原生图像能力）默认模型：Gemini 3.1 Flash Image Preview

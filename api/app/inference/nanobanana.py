@@ -236,20 +236,17 @@ class NanobananaProvider:
         return storage_path
 
     async def _read_uploaded_image(self, image_url: str, *, timeout: float = 20) -> tuple[bytes, str]:
-        if image_url.startswith("/static/"):
-            name = image_url.removeprefix("/static/").split("?", 1)[0]
-            path = self._storage_path() / name
+        # 本地图片（/v1/files/<key> 或 /static/<key>，含绝对 URL）：解析 key 直接读本地文件
+        name: str | None = None
+        for prefix in ("/v1/files/", "/static/"):
+            if prefix in image_url:
+                name = image_url.split(prefix, 1)[1].split("?", 1)[0].strip("/")
+                break
+        if name:
+            path = self._storage_path() / Path(name).name
             data = path.read_bytes()
             mime = mimetypes.guess_type(str(path))[0] or "image/png"
             return data, mime
-
-        if "/static/" in image_url:
-            name = image_url.split("/static/", 1)[1].split("?", 1)[0]
-            path = self._storage_path() / name
-            if path.exists():
-                data = path.read_bytes()
-                mime = mimetypes.guess_type(str(path))[0] or "image/png"
-                return data, mime
 
         mime = "image/png"
         try:
@@ -269,7 +266,8 @@ class NanobananaProvider:
         out_name = f"{uuid.uuid4().hex}{ext}"
         out_path = self._storage_path() / out_name
         out_path.write_bytes(image_bytes)
-        return f"/static/{out_name}"
+        # Phase 4：返回鉴权取图 URL（公开 /static 已移除）
+        return f"/v1/files/{out_name}"
 
     def _default_endpoint(self) -> str:
         model = runtime_config.get_model()

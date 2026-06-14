@@ -21,9 +21,9 @@ node_modules/
 _testinputs/
 _genreport/
 
-### Outputs
-storage/
-data/
+### Outputs（运行时生成目录，锚定到 api/ 下，避免误伤 app/storage 代码包）
+/api/storage/
+/api/data/
 *.jpg
 *.jpeg
 *.png

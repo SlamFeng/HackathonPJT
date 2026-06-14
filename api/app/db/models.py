@@ -175,6 +175,20 @@ class Job(Base):
     )
 
 
+class FileObject(Base):
+    """Phase 4：图片对象的归属登记。key=存储对象名；登记过的图按归属鉴权访问，
+    未登记的（生成中间图）默认仅管理员可读。"""
+
+    __tablename__ = "files"
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    content_type: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class AppSetting(Base):
     """运行时可被管理员动态修改的全局配置（如 API key、模型）。键值存储。"""
 

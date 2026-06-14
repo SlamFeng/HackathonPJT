@@ -4,7 +4,6 @@ import asyncio
 import json
 import os
 import sys
-import uuid
 
 # 某些非 UTF-8 控制台（日文 cp932、中文 GBK 等）无法编码调试日志里的中文，
 # 会让 print(prompt) 抛 UnicodeEncodeError，进而拖垮整个生成任务。
@@ -14,13 +13,11 @@ for _stream in (sys.stdout, sys.stderr):
         _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
     except Exception:
         pass
-from pathlib import Path
 from typing import Any, AsyncIterator
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .admin import service as admin_service
@@ -31,11 +28,14 @@ from .auth.router import router as auth_router
 from .auth.service import seed_admin
 from .db.base import SessionLocal, get_db, init_models, is_sqlite
 from .db.models import Job, User
+from .files import service as files_service
+from .files.router import router as files_router
 from .generation_logs import generation_log_store
 from .jobs import service as job_service
 from .jobs import worker as job_worker
 from .models import JobCreateRequest, JobResponse
 from .settings import settings
+from .storage import content_type_for, storage
 
 
 app = FastAPI(title="AI智能试衣间 API", version="0.3.0")
@@ -48,13 +48,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-storage_path = Path(__file__).resolve().parents[1] / settings.storage_dir
-storage_path.mkdir(parents=True, exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(storage_path)), name="static")
-
+# Phase 4：不再公开挂载 /static（任何人猜 URL 即可看图）。
+# 图片改由 /v1/files/{key} 鉴权按归属提供（见 files 路由）。
 app.include_router(auth_router)
 app.include_router(assets_router)
 app.include_router(admin_router)
+app.include_router(files_router)
 
 
 @app.on_event("startup")
@@ -106,7 +105,9 @@ def _file_ext(name: str) -> str:
 
 @app.post("/v1/assets/upload")
 async def upload_asset(
-    file: UploadFile = File(...), user: User = Depends(get_current_user)
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     if file.size is not None and file.size > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="文件过大")
@@ -115,16 +116,14 @@ async def upload_asset(
     if ext not in [".png", ".jpg", ".jpeg", ".webp"]:
         raise HTTPException(status_code=400, detail="仅支持 png/jpg/jpeg/webp")
 
-    asset_id = str(uuid.uuid4())
-    out_name = f"{asset_id}{ext}"
-    out_path = storage_path / out_name
-
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="文件过大")
-    out_path.write_bytes(content)
 
-    return {"assetId": asset_id, "url": f"/static/{out_name}"}
+    key = await storage.save(content, ext)
+    # 登记归属：上传者拥有该图，仅本人/管理员可通过 /v1/files 访问
+    await files_service.register(db, key=key, user_id=user.id, content_type=content_type_for(key))
+    return {"assetId": key, "url": files_service.file_url(key)}
 
 
 @app.post("/v1/jobs", response_model=JobResponse)
