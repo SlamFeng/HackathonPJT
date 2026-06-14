@@ -3,21 +3,23 @@
 import { useMemo, useState } from "react";
 
 import { absUrl, createJob, uploadAsset, waitForImageJob } from "@/lib/api";
+import { formatMessage, useI18n } from "@/lib/i18n";
 import { ClosetCategory, ClosetItem, useAppStore } from "@/stores/useAppStore";
 
-const categories: Array<{ id: ClosetCategory; label: string }> = [
-  { id: "top", label: "上衣" },
-  { id: "pants", label: "裤子" },
-  { id: "skirt", label: "裙子" },
-  { id: "dress", label: "连衣裙" },
-  { id: "outerwear", label: "外套" },
-  { id: "suit", label: "套装" },
-  { id: "underwear", label: "贴身衣物" },
-  { id: "shoes", label: "鞋子" },
-  { id: "accessory", label: "配饰" },
+const categories: Array<{ id: ClosetCategory }> = [
+  { id: "top" },
+  { id: "pants" },
+  { id: "skirt" },
+  { id: "dress" },
+  { id: "outerwear" },
+  { id: "suit" },
+  { id: "underwear" },
+  { id: "shoes" },
+  { id: "accessory" },
 ];
 
 export default function ClosetPage() {
+  const { t } = useI18n();
   const closet = useAppStore((s) => s.closet);
   const upsert = useAppStore((s) => s.upsertClosetItem);
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
@@ -35,8 +37,8 @@ export default function ClosetPage() {
     setBusy(true);
     setProgress(0.05);
     try {
-      if (!file) throw new Error("请选择图片");
-      if (file.size > 8 * 1024 * 1024) throw new Error("服装图需 ≤8MB");
+      if (!file) throw new Error(t.closet.selectImageError);
+      if (file.size > 8 * 1024 * 1024) throw new Error(t.closet.fileTooLarge);
       const uploaded = await uploadAsset(file);
       setProgress(0.15);
 
@@ -47,6 +49,7 @@ export default function ClosetPage() {
       });
 
       const { image } = await waitForImageJob(job.jobId, {
+        messages: t.common.job,
         onUpdate: (latest) => setProgress(Math.max(latest.progress ?? 0.15, 0.15)),
       });
 
@@ -61,7 +64,7 @@ export default function ClosetPage() {
       setFile(null);
       setProgress(1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "发生错误");
+      setError(e instanceof Error ? e.message : t.closet.fallbackError);
     } finally {
       setBusy(false);
     }
@@ -70,15 +73,15 @@ export default function ClosetPage() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
       <div className="rounded-3xl border border-zinc-200/70 bg-white p-6 md:p-8">
-        <div className="text-xs text-zinc-500">个人衣橱</div>
-        <div className="mt-1 text-xl font-semibold tracking-tight">上传商品图并自动清理成单品图</div>
+        <div className="text-xs text-zinc-500">{t.closet.eyebrow}</div>
+        <div className="mt-1 text-xl font-semibold tracking-tight">{t.closet.title}</div>
         <div className="mt-2 text-sm text-zinc-600">
-          单张图片 ≤8MB。上传后会按分类提取目标单品，处理完成后可在「工作室」中一键试穿。
+          {t.closet.description}
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="md:col-span-2 rounded-3xl border border-zinc-200/70 bg-zinc-50 p-5">
-            <div className="text-sm font-medium">选择图片</div>
+            <div className="text-sm font-medium">{t.closet.chooseImage}</div>
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
@@ -87,11 +90,11 @@ export default function ClosetPage() {
               disabled={busy}
             />
             <div className="mt-4 text-xs text-zinc-600">
-              {file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)}MB` : "支持商品模特图或白底图；请先选择分类，系统会按分类提取目标单品"}
+              {file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)}MB` : t.closet.helper}
             </div>
           </div>
           <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
-            <div className="text-sm font-medium">分类</div>
+            <div className="text-sm font-medium">{t.closet.category}</div>
             <div className="mt-4 flex flex-wrap gap-2">
               {categories.map((c) => {
                 const active = category === c.id;
@@ -105,7 +108,7 @@ export default function ClosetPage() {
                     onClick={() => setCategory(c.id)}
                     disabled={busy}
                   >
-                    {c.label}
+                    {t.common.categories[c.id]}
                   </button>
                 );
               })}
@@ -118,7 +121,7 @@ export default function ClosetPage() {
               onClick={handleUpload}
               disabled={!canSubmit}
             >
-              {busy ? `处理中... ${Math.round(progress * 100)}%` : "处理并上传到衣橱"}
+              {busy ? formatMessage(t.closet.processing, { progress: Math.round(progress * 100) }) : t.closet.uploadButton}
             </button>
             {error ? <div className="mt-3 text-sm text-red-600">{error}</div> : null}
           </div>
@@ -128,14 +131,14 @@ export default function ClosetPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {closet.length === 0 ? (
           <div className="md:col-span-3 rounded-3xl border border-zinc-200/70 bg-white p-10 text-center text-sm text-zinc-500">
-            暂无单品。先上传一件衣服开始试穿。
+            {t.closet.empty}
           </div>
         ) : (
           closet.map((item) => (
             <div key={item.id} className="rounded-3xl border border-zinc-200/70 bg-white p-4">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs text-zinc-500">
-                  {categories.find((c) => c.id === item.category)?.label ?? item.category}
+                  {t.common.categories[item.category] ?? item.category}
                 </div>
                 <button
                   className={[
@@ -144,10 +147,10 @@ export default function ClosetPage() {
                   ].join(" ")}
                   onClick={() => toggleFavorite(item.id)}
                 >
-                  {item.favorited ? "已收藏" : "收藏"}
+                  {item.favorited ? t.closet.favorited : t.closet.favorite}
                 </button>
               </div>
-              <img src={item.imageUrl} alt="garment" className="mt-3 h-56 w-full rounded-2xl bg-zinc-50 object-contain" />
+              <img src={item.imageUrl} alt={t.common.garmentAlt} className="mt-3 h-56 w-full rounded-2xl bg-zinc-50 object-contain" />
             </div>
           ))
         )}

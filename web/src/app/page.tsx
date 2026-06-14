@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ArrowRight, ChevronRight } from "lucide-react";
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { LanguageToggle, useI18n } from "@/lib/i18n";
+
 type IdleRequestHandle = number;
 
 function requestIdle(cb: () => void, timeoutMs = 1200): IdleRequestHandle {
@@ -40,6 +42,7 @@ async function decodeImage(src: string) {
 }
 
 export default function Home() {
+  const { t } = useI18n();
   const IMAGES = useMemo(
     () => [
       {
@@ -190,7 +193,10 @@ export default function Home() {
         />
 
         <div className="absolute left-4 top-6 text-xs font-semibold uppercase tracking-[0.18em] text-white sm:left-8" style={{ zIndex: 60, opacity: 0.9 }}>
-          AI DRESSROOM
+          {t.home.brand}
+        </div>
+        <div className="absolute right-4 top-5 sm:right-8" style={{ zIndex: 60 }}>
+          <LanguageToggle variant="dark" />
         </div>
 
         <div
@@ -206,7 +212,7 @@ export default function Home() {
             textTransform: "uppercase",
           }}
         >
-          TRY ON
+          {t.home.hero}
         </div>
 
         <div className="absolute inset-0" style={{ zIndex: 3 }}>
@@ -291,15 +297,15 @@ export default function Home() {
 
         <div className="absolute bottom-6 left-4 sm:bottom-20 sm:left-24" style={{ zIndex: 60, maxWidth: 360 }}>
           <p className="mb-2 text-base font-bold uppercase text-white sm:mb-3 sm:text-[22px]" style={{ opacity: 0.95, letterSpacing: "0.02em" }}>
-            AI 智能试衣间
+            {t.home.title}
           </p>
           <p className="mb-4 hidden text-sm text-white sm:block sm:mb-5" style={{ opacity: 0.85, lineHeight: 1.6 }}>
-            数字人定制 · 姿态控制 · 虚拟换装 · 穿搭顾问。点击右下角进入工作台开始体验。
+            {t.home.subtitle}
           </p>
           <div className="flex items-center gap-3 sm:gap-4">
             <button
               type="button"
-              aria-label="Previous"
+              aria-label={t.home.previous}
               onClick={() => navigate("prev")}
               className="grid h-12 w-12 place-items-center rounded-full border-2 border-white text-white transition-[transform,background-color] duration-150 hover:scale-[1.08] hover:bg-white/10 sm:h-16 sm:w-16"
             >
@@ -307,7 +313,7 @@ export default function Home() {
             </button>
             <button
               type="button"
-              aria-label="Next"
+              aria-label={t.home.next}
               onClick={() => navigate("next")}
               className="grid h-12 w-12 place-items-center rounded-full border-2 border-white text-white transition-[transform,background-color] duration-150 hover:scale-[1.08] hover:bg-white/10 sm:h-16 sm:w-16"
             >
@@ -328,7 +334,7 @@ export default function Home() {
             textTransform: "uppercase",
           }}
         >
-          DISCOVER IT
+          {t.home.discover}
           <ArrowRight className="h-5 w-5 sm:h-8 sm:w-8" strokeWidth={2.25} />
         </Link>
       </div>

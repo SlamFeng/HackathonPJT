@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 
 import { absUrl, createJob, waitForImageJob } from "@/lib/api";
+import { formatMessage, useI18n } from "@/lib/i18n";
 import {
   ClosetCategory,
   ClosetItem,
@@ -18,6 +19,7 @@ function tryOnKey(poseId: PoseId, garmentId: string) {
 }
 
 export default function StudioPage() {
+  const { t } = useI18n();
   const avatar = useAppStore((s) => s.avatar);
   const closet = useAppStore((s) => s.closet);
   const setPoseRender = useAppStore((s) => s.setPoseRender);
@@ -49,7 +51,7 @@ export default function StudioPage() {
   async function regeneratePose(targetPoseId: PoseId) {
     setError(null);
     if (!avatar.avatarImageUrl) {
-      setError("请先生成数字人");
+      setError(t.studio.generateAvatarFirst);
       return;
     }
 
@@ -64,6 +66,7 @@ export default function StudioPage() {
       });
 
       const { image } = await waitForImageJob(job.jobId, {
+        messages: t.common.job,
         onUpdate: (latest) =>
           patchPoseRender(targetPoseId, {
             status: "running",
@@ -80,16 +83,16 @@ export default function StudioPage() {
       setPoseRender(targetPoseId, {
         status: "failed",
         progress: 1,
-        error: e instanceof Error ? e.message : "姿态重新生成失败",
+        error: e instanceof Error ? e.message : t.studio.poseRegenerateFailed,
       });
-      setError(e instanceof Error ? e.message : "姿态重新生成失败");
+      setError(e instanceof Error ? e.message : t.studio.poseRegenerateFailed);
     }
   }
 
   async function handleTryOn() {
     setError(null);
     if (!poseReady || !currentPose?.imageUrl) {
-      setError("当前姿态还没有生成完成，暂时不能试穿");
+      setError(t.studio.poseNotReady);
       return;
     }
     if (!garment || !selectedTryOnKey) return;
@@ -109,6 +112,7 @@ export default function StudioPage() {
       });
 
       const { image } = await waitForImageJob(job.jobId, {
+        messages: t.common.job,
         onUpdate: (latest) =>
           patchTryOnRender(selectedTryOnKey, {
             status: "running",
@@ -132,19 +136,19 @@ export default function StudioPage() {
       setTryOnRender(selectedTryOnKey, {
         status: "failed",
         progress: 1,
-        error: e instanceof Error ? e.message : "试穿失败",
+        error: e instanceof Error ? e.message : t.studio.tryOnFailed,
       });
-      setError(e instanceof Error ? e.message : "试穿失败");
+      setError(e instanceof Error ? e.message : t.studio.tryOnFailed);
     }
   }
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div className="rounded-3xl border border-zinc-200/70 bg-white p-6 md:p-8">
-        <div className="text-xs text-zinc-500">姿态与试穿</div>
-        <div className="mt-1 text-xl font-semibold tracking-tight">选择姿态 → 选择单品 → 一键试穿</div>
+        <div className="text-xs text-zinc-500">{t.studio.eyebrow}</div>
+        <div className="mt-1 text-xl font-semibold tracking-tight">{t.studio.title}</div>
         <div className="mt-2 text-sm text-zinc-600">
-          数字人生成后会自动预生成所有姿态；已生成的姿态和试穿图会被缓存，切换回来可直接查看。
+          {t.studio.description}
         </div>
       </div>
 
@@ -155,7 +159,7 @@ export default function StudioPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="rounded-3xl border border-zinc-200/70 bg-white p-5 lg:col-span-3">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-medium">姿态库</div>
+            <div className="text-sm font-medium">{t.studio.poseLibrary}</div>
             <button
               className={[
                 "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
@@ -164,7 +168,7 @@ export default function StudioPage() {
               onClick={() => regeneratePose(poseId)}
               disabled={!canRegeneratePose}
             >
-              {poseRunning ? "生成中" : "重新生成"}
+              {poseRunning ? t.studio.generating : t.studio.regenerate}
             </button>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
@@ -184,9 +188,9 @@ export default function StudioPage() {
                   }}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-medium">{p.label}</div>
+                    <div className="text-xs font-medium">{t.common.poses[p.id]}</div>
                     <div className={["text-[10px]", active ? "text-zinc-300" : "text-zinc-500"].join(" ")}>
-                      {poseStatusLabel(state?.status)}
+                      {poseStatusLabel(state?.status, t.studio.poseStatus)}
                     </div>
                   </div>
                   <div
@@ -205,10 +209,10 @@ export default function StudioPage() {
           </div>
 
           <div className="mt-6">
-            <div className="text-sm font-medium">试穿单品</div>
+            <div className="text-sm font-medium">{t.studio.tryOnItems}</div>
             <div className="mt-3 space-y-2">
               {closet.length === 0 ? (
-                <div className="rounded-2xl bg-zinc-50 p-4 text-xs text-zinc-500">衣橱为空，先去上传单品</div>
+                <div className="rounded-2xl bg-zinc-50 p-4 text-xs text-zinc-500">{t.studio.closetEmpty}</div>
               ) : (
                 closet.slice(0, 6).map((item) => {
                   const active = garment?.id === item.id;
@@ -224,13 +228,13 @@ export default function StudioPage() {
                     >
                       <img
                         src={item.imageUrl}
-                        alt="garment"
+                        alt={t.common.garmentAlt}
                         className="h-10 w-10 rounded-xl bg-white object-contain"
                       />
                       <div className="min-w-0">
                         <div className="truncate text-xs font-medium">{item.id.slice(0, 8)}</div>
                         <div className={["text-[11px]", active ? "text-zinc-200" : "text-zinc-500"].join(" ")}>
-                          {tryOnStatusLabel(cachedTryOn?.status)}
+                          {tryOnStatusLabel(cachedTryOn?.status, t.studio.tryOnStatus)}
                         </div>
                       </div>
                     </button>
@@ -247,37 +251,40 @@ export default function StudioPage() {
               disabled={!canTryOn}
             >
               {tryOnRunning
-                ? `试穿中... ${Math.round((currentTryOn?.progress ?? 0) * 100)}%`
+                ? formatMessage(t.studio.tryOnRunning, { progress: Math.round((currentTryOn?.progress ?? 0) * 100) })
                 : currentTryOn?.status === "succeeded"
-                  ? "重新试穿"
-                  : "一键试穿"}
+                  ? t.studio.retryTryOn
+                  : t.studio.oneClickTryOn}
             </button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:col-span-9">
           <PreviewCard
-            title="姿态预览"
-            subtitle={poseSubtitle(currentPose)}
+            title={t.studio.posePreview}
+            subtitle={poseSubtitle(currentPose, t.studio.poseSubtitle)}
             imageUrl={poseReady ? currentPose?.imageUrl : null}
             loading={poseRunning}
-            emptyText={avatar.avatarImageUrl ? "等待当前姿态生成完成" : "请先生成数字人"}
+            emptyText={avatar.avatarImageUrl ? t.studio.poseEmptyWithAvatar : t.studio.poseEmptyNoAvatar}
           />
           <PreviewCard
-            title="试穿预览"
-            subtitle={tryOnSubtitle(currentTryOn)}
+            title={t.studio.tryOnPreview}
+            subtitle={tryOnSubtitle(currentTryOn, t.studio.tryOnSubtitle)}
             imageUrl={currentTryOn?.status === "succeeded" ? currentTryOn.imageUrl : null}
             overlayImageUrl={currentTryOn?.overlayGarmentUrl}
             overlayTransform={currentTryOn?.overlayTransform}
             overlayCategory={garment?.category ?? null}
             loading={tryOnRunning}
+            imageAlt={t.common.avatarAlt}
+            overlayAlt={t.common.overlayAlt}
             emptyText={
               !poseReady
-                ? "当前姿态生成完成后可试穿"
+                ? t.studio.tryOnEmptyPoseNotReady
                 : garment
-                  ? "点击「一键试穿」生成该姿态试穿图"
-                  : "选择单品后点击「一键试穿」"
+                  ? t.studio.tryOnEmptyWithGarment
+                  : t.studio.tryOnEmptyNoGarment
             }
+            fallbackEmptyText={t.studio.emptyPreview}
           />
         </div>
       </div>
@@ -285,32 +292,38 @@ export default function StudioPage() {
   );
 }
 
-function poseStatusLabel(status?: string) {
-  if (status === "running") return "生成中";
-  if (status === "succeeded") return "已生成";
-  if (status === "failed") return "失败";
-  return "未生成";
+function poseStatusLabel(status: string | undefined, labels: { running: string; succeeded: string; failed: string; idle: string }) {
+  if (status === "running") return labels.running;
+  if (status === "succeeded") return labels.succeeded;
+  if (status === "failed") return labels.failed;
+  return labels.idle;
 }
 
-function tryOnStatusLabel(status?: string) {
-  if (status === "running") return "试穿中";
-  if (status === "succeeded") return "已试穿";
-  if (status === "failed") return "试穿失败";
-  return "点击选中";
+function tryOnStatusLabel(status: string | undefined, labels: { running: string; succeeded: string; failed: string; idle: string }) {
+  if (status === "running") return labels.running;
+  if (status === "succeeded") return labels.succeeded;
+  if (status === "failed") return labels.failed;
+  return labels.idle;
 }
 
-function poseSubtitle(state?: { status: string; progress: number; error?: string }) {
-  if (state?.status === "running") return `生成中... ${Math.round(state.progress * 100)}%`;
-  if (state?.status === "succeeded") return "已缓存 · 切换姿态无需重新生成";
-  if (state?.status === "failed") return state.error ?? "姿态生成失败，可点击重新生成";
-  return "尚未生成 · 可点击重新生成";
+function poseSubtitle(
+  state: { status: string; progress: number; error?: string } | undefined,
+  labels: { running: string; succeeded: string; failed: string; idle: string },
+) {
+  if (state?.status === "running") return formatMessage(labels.running, { progress: Math.round(state.progress * 100) });
+  if (state?.status === "succeeded") return labels.succeeded;
+  if (state?.status === "failed") return state.error ?? labels.failed;
+  return labels.idle;
 }
 
-function tryOnSubtitle(state?: { status: string; progress: number; error?: string }) {
-  if (state?.status === "running") return `生成中... ${Math.round(state.progress * 100)}%`;
-  if (state?.status === "succeeded") return "已缓存 · 可重新试穿覆盖";
-  if (state?.status === "failed") return state.error ?? "试穿失败，可重新生成";
-  return "按姿态与单品分别缓存";
+function tryOnSubtitle(
+  state: { status: string; progress: number; error?: string } | undefined,
+  labels: { running: string; succeeded: string; failed: string; idle: string },
+) {
+  if (state?.status === "running") return formatMessage(labels.running, { progress: Math.round(state.progress * 100) });
+  if (state?.status === "succeeded") return labels.succeeded;
+  if (state?.status === "failed") return state.error ?? labels.failed;
+  return labels.idle;
 }
 
 function PreviewCard({
@@ -322,6 +335,9 @@ function PreviewCard({
   overlayCategory,
   loading,
   emptyText,
+  imageAlt,
+  overlayAlt,
+  fallbackEmptyText,
 }: {
   title: string;
   subtitle: string;
@@ -331,6 +347,9 @@ function PreviewCard({
   overlayCategory?: ClosetCategory | null;
   loading: boolean;
   emptyText?: string;
+  imageAlt?: string;
+  overlayAlt?: string;
+  fallbackEmptyText?: string;
 }) {
   const overlayStyle = overlayTransform
     ? overlayTransformToStyle(overlayTransform)
@@ -349,11 +368,11 @@ function PreviewCard({
       <div className="relative mt-4 h-[520px] overflow-hidden rounded-3xl bg-zinc-50">
         {imageUrl ? (
           <>
-            <img src={imageUrl} alt={title} className="h-full w-full object-contain" />
+            <img src={imageUrl} alt={imageAlt ?? title} className="h-full w-full object-contain" />
             {overlayImageUrl ? (
               <img
                 src={overlayImageUrl}
-                alt="overlay"
+                alt={overlayAlt ?? "overlay"}
                 className="pointer-events-none absolute object-contain"
                 style={overlayStyle ?? { left: "50%", top: "50%", width: "70%", height: "auto", transform: "translate(-50%, -50%)" }}
               />
@@ -361,7 +380,7 @@ function PreviewCard({
           </>
         ) : (
           <div className="flex h-full w-full items-center justify-center px-10 text-center text-xs text-zinc-500">
-            {emptyText ?? "尚未生成"}
+            {emptyText ?? fallbackEmptyText ?? ""}
           </div>
         )}
         {loading ? (

@@ -132,6 +132,11 @@ export async function waitForImageJob(
     pollIntervalMs?: number;
     minProgress?: number;
     onUpdate?: (job: JobResponse) => void;
+    messages?: {
+      missingImage: string;
+      failed: string;
+      timeout: string;
+    };
   },
 ) {
   const maxWaitMs = options?.maxWaitMs ?? 5 * 60 * 1000;
@@ -143,15 +148,15 @@ export async function waitForImageJob(
 
     if (latest.status === "succeeded") {
       const image = latest.artifacts?.find((a) => a.kind === "image");
-      if (!image?.url) throw new Error("未返回图片");
+      if (!image?.url) throw new Error(options?.messages?.missingImage ?? "No image returned");
       return { job: latest, image };
     }
     if (latest.status === "failed") {
-      throw new Error(latest.error?.message ?? "任务失败");
+      throw new Error(latest.error?.message ?? options?.messages?.failed ?? "Job failed");
     }
     await new Promise((r) => setTimeout(r, pollIntervalMs));
   }
-  throw new Error("任务超时（等待超过 5 分钟）");
+  throw new Error(options?.messages?.timeout ?? "Job timed out after 5 minutes");
 }
 
 export async function listGenerationLogs(limit = 50) {

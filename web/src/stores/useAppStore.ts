@@ -27,13 +27,13 @@ export type PoseId =
   | "casual_sit"
   | "side_stand";
 
-export const POSES: Array<{ id: PoseId; label: string }> = [
-  { id: "hands_on_hips", label: "叉腰" },
-  { id: "neutral_stand", label: "垂立" },
-  { id: "hands_behind_back", label: "背手" },
-  { id: "runway_walk", label: "T台" },
-  { id: "casual_sit", label: "坐姿" },
-  { id: "side_stand", label: "侧身" },
+export const POSES: Array<{ id: PoseId }> = [
+  { id: "hands_on_hips" },
+  { id: "neutral_stand" },
+  { id: "hands_behind_back" },
+  { id: "runway_walk" },
+  { id: "casual_sit" },
+  { id: "side_stand" },
 ];
 
 export type OverlayTransform = {
