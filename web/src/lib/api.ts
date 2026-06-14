@@ -107,6 +107,15 @@ export async function uploadAsset(file: File) {
   return { assetId: data.assetId, url: absUrl(data.url), rawUrl: data.url };
 }
 
+function newIdempotencyKey(): string {
+  try {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  } catch {
+    /* ignore */
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export async function createJob(input: {
   jobType: JobType;
   providerPreference?: ProviderPreference;
@@ -119,6 +128,9 @@ export async function createJob(input: {
     qualityLevel?: "standard" | "high";
     timeoutSec?: number;
   };
+  // 幂等键：默认每次提交生成一个新 UUID（防止网络重试重复创建）；
+  // 调用方可显式传入稳定的 key，对同一逻辑操作做去重。
+  idempotencyKey?: string;
 }) {
   const res = await apiFetch(`${API_BASE}/v1/jobs`, {
     method: "POST",
@@ -128,6 +140,7 @@ export async function createJob(input: {
       providerPreference: input.providerPreference ?? "nanobanana_first",
       inputs: input.inputs,
       constraints: input.constraints ?? {},
+      idempotencyKey: input.idempotencyKey ?? newIdempotencyKey(),
     }),
   });
   if (!res.ok) throw new Error(await res.text());

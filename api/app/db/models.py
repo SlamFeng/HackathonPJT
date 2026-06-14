@@ -6,7 +6,19 @@ from datetime import datetime
 # 用 SQLAlchemy 2.0 跨方言的 Uuid：Postgres 上编译为原生 UUID，
 # SQLite 上编译为 CHAR(32)，从而同一份模型既能跑容器里的 Postgres，
 # 也能跑本地零配置的 SQLite。
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, Uuid, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -124,6 +136,40 @@ class TryonResult(Base):
     job_id: Mapped[str | None] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="succeeded", server_default="succeeded")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class Job(Base):
+    """Phase 3：持久化的生成任务。取代内存 JobStore，使重启不丢、可重试、可幂等。"""
+
+    __tablename__ = "jobs"
+    __table_args__ = (
+        # 同一用户的同一幂等键只允许一条（NULL 不参与唯一约束，两库通用）
+        UniqueConstraint("user_id", "idempotency_key", name="uq_jobs_user_idempotency"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    job_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    provider_preference: Mapped[str | None] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued", server_default="queued", index=True)
+    stage: Mapped[str | None] = mapped_column(String(40))
+    progress: Mapped[float | None] = mapped_column(Float)
+    input_json: Mapped[dict | None] = mapped_column(JSON)
+    constraints_json: Mapped[dict | None] = mapped_column(JSON)
+    artifacts_json: Mapped[list | None] = mapped_column(JSON)
+    quality_json: Mapped[dict | None] = mapped_column(JSON)
+    error_json: Mapped[dict | None] = mapped_column(JSON)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    idempotency_key: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

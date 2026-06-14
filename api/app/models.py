@@ -60,6 +60,8 @@ class JobCreateRequest(BaseModel):
     providerPreference: ProviderPreference = ProviderPreference.nanobanana_first
     inputs: dict[str, Any]
     constraints: JobConstraints | None = None
+    # 幂等键：同一用户重复提交相同 key 时返回已存在任务，避免重复创建/重复扣费
+    idempotencyKey: str | None = None
 
 
 class JobArtifact(BaseModel):

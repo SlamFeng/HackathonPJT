@@ -89,7 +89,7 @@
 docker compose up --build
 ```
 
-这会同时起 **前端 + 后端 + Postgres 数据库** 三个容器。访问：
+这会同时起 **前端 + 后端 + 后台 worker + Postgres** 四个容器（worker 独立执行生成任务）。访问：
 
 - 前端：http://localhost:3000
 - 后端健康检查：http://localhost:8000/health

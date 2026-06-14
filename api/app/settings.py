@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     admin_email: str | None = None
     admin_password: str | None = None
 
+    # ===== Phase 3：后台任务 worker =====
+    # 默认在 API 进程内跑 worker（本地零配置）。Docker 拆分部署时把 API 设为 false，
+    # 另起一个独立 worker 进程（python worker.py）。
+    worker_in_process: bool = True
+    worker_concurrency: int = 2
+    worker_poll_interval_sec: float = 1.0
+
     @property
     def cors_origin_list(self) -> list[str]:
         raw = self.cors_origins

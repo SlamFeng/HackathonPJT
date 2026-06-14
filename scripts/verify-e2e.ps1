@@ -73,6 +73,17 @@ try { Invoke-WebRequest "$base/v1/jobs/$jobId" -WebSession $sessB -UseBasicParsi
 catch { $codeB = [int]$_.Exception.Response.StatusCode }
 Check "用户B 看不到用户A 的任务(404)" ($codeB -eq 404)
 
+# 8.5) Phase 3 幂等：相同 idempotencyKey 重复提交返回同一任务，不同则新建
+$idk = [Guid]::NewGuid().ToString()
+$ja = Invoke-RestMethod "$base/v1/jobs" -Method Post -ContentType "application/json" -WebSession $sessA `
+    -Body (@{ jobType = "avatar_generate"; inputs = @{ imageUrl = $up.url }; idempotencyKey = $idk } | ConvertTo-Json)
+$jb = Invoke-RestMethod "$base/v1/jobs" -Method Post -ContentType "application/json" -WebSession $sessA `
+    -Body (@{ jobType = "avatar_generate"; inputs = @{ imageUrl = $up.url }; idempotencyKey = $idk } | ConvertTo-Json)
+Check "相同幂等键返回同一任务" ($ja.jobId -eq $jb.jobId)
+$jc = Invoke-RestMethod "$base/v1/jobs" -Method Post -ContentType "application/json" -WebSession $sessA `
+    -Body (@{ jobType = "avatar_generate"; inputs = @{ imageUrl = $up.url }; idempotencyKey = [Guid]::NewGuid().ToString() } | ConvertTo-Json)
+Check "不同幂等键创建新任务" ($jc.jobId -ne $ja.jobId)
+
 # 9) 管理员登录 + 角色校验 + debug 仅管理员可见
 $adm = Invoke-RestMethod "$base/v1/auth/login" -Method Post -ContentType "application/json" `
     -Body '{"email":"admin@ailurus.com","password":"admin12345"}' -SessionVariable sessAdm
