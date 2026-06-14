@@ -92,6 +92,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, [me, pathname]);
 
+  // 移动端导航开关（窄屏侧边栏隐藏时用汉堡菜单访问）；切换路由自动收起
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
+
   const isPublic = PUBLIC_ROUTES.has(pathname);
 
   // 受保护路由的主动守卫：登录态确定后若未登录，立即跳转登录页
@@ -154,7 +160,20 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-zinc-200/70 bg-zinc-50/80 px-5 py-4 backdrop-blur md:px-8">
-          <div className="text-sm font-medium tracking-tight">AI 智能试衣间</div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="菜单"
+              aria-expanded={mobileNavOpen}
+              onClick={() => setMobileNavOpen((v) => !v)}
+              className="-ml-1 rounded-lg p-1.5 text-zinc-700 hover:bg-zinc-200/60 md:hidden"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                {mobileNavOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+              </svg>
+            </button>
+            <div className="text-sm font-medium tracking-tight">AI 智能试衣间</div>
+          </div>
           <div className="flex items-center gap-3">
             {credits !== null ? (
               <Link
@@ -178,6 +197,26 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
           </div>
         </header>
+        {mobileNavOpen ? (
+          <nav className="flex flex-col gap-1 border-b border-zinc-200/70 bg-white px-3 py-3 md:hidden">
+            {navItems.map((item) => {
+              const active = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileNavOpen(false)}
+                  className={[
+                    "rounded-xl px-3 py-2 text-sm transition-colors",
+                    active ? "bg-zinc-900 text-zinc-50" : "text-zinc-700 hover:bg-zinc-100",
+                  ].join(" ")}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        ) : null}
         {hasApiKey === false ? (
           <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-sm text-amber-800 md:px-8">
             {isAdmin ? (
