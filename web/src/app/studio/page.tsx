@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { absUrl, createJob, waitForImageJob } from "@/lib/api";
 import { createTryon, upsertPose } from "@/lib/assets";
@@ -30,6 +30,25 @@ export default function StudioPage() {
   const [poseId, setPoseId] = useState<PoseId>(POSES[0]!.id);
   const [garment, setGarment] = useState<ClosetItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // 刷新/进入页面后，若还没选单品：优先自动恢复一个「已有试穿结果」的 姿态+单品 组合，
+  // 让之前做过的试穿图刷新后直接可见；否则退而选中第一件单品，避免预览区空白。
+  useEffect(() => {
+    if (garment) return;
+    for (const key of Object.keys(avatar.tryOnRenders)) {
+      const sep = key.indexOf(":");
+      if (sep < 0) continue;
+      const pk = key.slice(0, sep);
+      const gid = key.slice(sep + 1);
+      const g = closet.find((c) => c.id === gid);
+      if (g && POSES.some((p) => p.id === pk) && avatar.tryOnRenders[key]?.status === "succeeded") {
+        setPoseId(pk as PoseId);
+        setGarment(g);
+        return;
+      }
+    }
+    if (closet.length > 0) setGarment(closet[0]!);
+  }, [garment, closet, avatar.tryOnRenders]);
 
   const currentPose = avatar.poseRenders[poseId];
   const poseReady = currentPose?.status === "succeeded" && !!currentPose.imageUrl;
