@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login } from "@/lib/auth";
+import { useAuth } from "@/lib/auth-context";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { refresh } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +19,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
+      await refresh();
       router.push("/workbench");
     } catch (err) {
       setError(err instanceof Error ? err.message : "登录失败");

@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { register } from "@/lib/auth";
+import { useAuth } from "@/lib/auth-context";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { refresh } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -22,6 +24,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register(email, password, displayName);
+      await refresh();
       router.push("/workbench");
     } catch (err) {
       setError(err instanceof Error ? err.message : "注册失败");
