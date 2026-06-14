@@ -21,6 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from .admin import service as admin_service
+from .admin.router import router as admin_router
 from .assets.router import router as assets_router
 from .auth.deps import get_current_user, require_admin
 from .auth.router import router as auth_router
@@ -52,6 +54,7 @@ provider = NanobananaProvider()
 
 app.include_router(auth_router)
 app.include_router(assets_router)
+app.include_router(admin_router)
 
 
 @app.on_event("startup")
@@ -68,8 +71,10 @@ async def _startup() -> None:
     try:
         async with SessionLocal() as db:
             await seed_admin(db)
+            # 载入管理员保存过的运行时配置（API key / 模型），覆盖 .env 默认
+            await admin_service.load_into_runtime(db)
     except Exception as e:  # noqa: BLE001
-        print(f"[startup] seed_admin skipped: {type(e).__name__}: {e}", flush=True)
+        print(f"[startup] seed_admin/load_settings skipped: {type(e).__name__}: {e}", flush=True)
 
 
 def _ensure_owner(job: JobRecord | None, user: User) -> JobRecord:

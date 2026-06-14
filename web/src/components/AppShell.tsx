@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useState } from "react";
 
+import { getConfigStatus } from "@/lib/admin";
 import { useAuth } from "@/lib/auth-context";
 import { useHydrateAssets } from "@/lib/useHydrateAssets";
 
@@ -16,6 +17,12 @@ const nav = [
   { href: "/history", label: "历史" },
   { href: "/orders", label: "订单" },
   { href: "/stylist", label: "穿搭顾问" },
+];
+
+// 仅管理员可见的导航项
+const adminNav = [
+  { href: "/admin/settings", label: "系统设置" },
+  { href: "/debug/generation-logs", label: "生图日志" },
 ];
 
 // 无需登录、且自带整屏布局的路由：门户与登录/注册页
@@ -35,6 +42,29 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { me, loading, signOut } = useAuth();
   // 登录后把该用户的数字人/衣橱/姿态/试穿从后端载入（每个用户一次）
   useHydrateAssets();
+
+  // 全局检测是否已配置 AI 模型 Key（未配置则顶部横幅提醒）
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!me) {
+      setHasApiKey(null);
+      return;
+    }
+    let cancelled = false;
+    const refetch = () =>
+      getConfigStatus()
+        .then((s) => {
+          if (!cancelled) setHasApiKey(s.hasApiKey);
+        })
+        .catch(() => {});
+    refetch();
+    // 管理员在设置页改完 Key 后会派发该事件，让横幅即时刷新（无需导航）
+    window.addEventListener("config-changed", refetch);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("config-changed", refetch);
+    };
+  }, [me, pathname]);
 
   const isPublic = PUBLIC_ROUTES.has(pathname);
 
@@ -64,6 +94,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     router.replace("/login");
   }
 
+  const navItems = me.role === "admin" ? [...nav, ...adminNav] : nav;
+  const isAdmin = me.role === "admin";
+
   return (
     <div className="flex min-h-full flex-1 bg-zinc-50 text-zinc-950">
       <aside className="hidden w-[280px] shrink-0 border-r border-zinc-200/70 bg-white p-6 md:flex md:flex-col">
@@ -72,7 +105,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="text-[11px] text-zinc-500">nanobanana-first</div>
         </div>
         <nav className="mt-6 flex flex-col gap-1">
-          {nav.map((item) => {
+          {navItems.map((item) => {
             const active = pathname === item.href;
             return (
               <Link
@@ -110,6 +143,20 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
           </div>
         </header>
+        {hasApiKey === false ? (
+          <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-sm text-amber-800 md:px-8">
+            {isAdmin ? (
+              <span>
+                ⚠️ 尚未配置 AI 模型 API Key，生成将走 mock（仅回显原图）。
+                <Link href="/admin/settings" className="ml-1 font-medium text-amber-900 underline">
+                  前往「系统设置」配置 →
+                </Link>
+              </span>
+            ) : (
+              <span>⚠️ 系统尚未配置 AI 模型 Key，生成暂为 mock 效果，请联系管理员配置后再使用。</span>
+            )}
+          </div>
+        ) : null}
         <main className="flex min-w-0 flex-1 flex-col px-5 py-6 md:px-8">{children}</main>
       </div>
     </div>
