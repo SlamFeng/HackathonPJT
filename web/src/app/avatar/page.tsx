@@ -16,6 +16,7 @@ import { POSES, PoseId, useAppStore } from "@/stores/useAppStore";
 import AutoAspectImage from "@/components/AutoAspectImage";
 import { UploadField } from "@/components/UploadField";
 import { JobProgress } from "@/components/JobProgress";
+import { NextStepBar } from "@/components/NextStepBar";
 
 const optionalIntInRange = (label: string, min: number, max: number) =>
   z
@@ -108,6 +109,7 @@ export default function AvatarPage() {
   const [, setProgress] = useState<number>(0);
   const [stage, setStage] = useState<string>("");
   const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [generated, setGenerated] = useState(false);
 
   const canSubmit = useMemo(() => !!file && !busy, [file, busy]);
 
@@ -208,6 +210,7 @@ export default function AvatarPage() {
       setAvatar({ avatarId, avatarImageUrl });
       setProgress(1);
       setStage(latest.status === "succeeded" ? "完成，正在后台预生成姿态" : "完成");
+      setGenerated(true);
       startPosePrefetch(avatarImageUrl, avatarId);
       return;
     } catch (e) {
@@ -277,6 +280,16 @@ export default function AvatarPage() {
           </button>
         </div>
       </div>
+
+      {generated ? (
+        <NextStepBar
+          text="模特已创建，姿态正在后台预生成。下一步上传新品，即可批量出图。"
+          href="/closet"
+          cta="去上传商品"
+          secondaryHref="/workbench"
+          secondaryCta="直接去批量出图"
+        />
+      ) : null}
 
       {avatars.length > 0 ? (
         <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">

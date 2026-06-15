@@ -5,6 +5,7 @@ import io
 import json
 import os
 import sys
+import uuid
 import zipfile
 
 # 某些非 UTF-8 控制台（日文 cp932、中文 GBK 等）无法编码调试日志里的中文，
@@ -39,6 +40,7 @@ from .jobs import worker as job_worker
 from .models import (
     BatchJobCreateRequest,
     BatchJobResponse,
+    BatchSummary,
     ExportZipRequest,
     JobCreateRequest,
     JobResponse,
@@ -205,6 +207,9 @@ async def create_jobs_batch(
                 detail=f"额度不足：本次批量需 {total_cost} 额度，当前余额 {bal}。请联系管理员充值后再生成。",
             )
 
+    # 本次批量的分组 id：新建任务都打上它，便于「出图记录按批次」聚合与整包下载。
+    batch_uuid = uuid.uuid4()
+
     # 创建任务；unaccounted = 已扣但尚未"确认消耗或已退回"的额度，出异常时整体退回。
     responses: list[JobResponse] = []
     charged = 0
@@ -222,6 +227,7 @@ async def create_jobs_batch(
                 inputs=item.inputs,
                 constraints=item.constraints.model_dump() if item.constraints else None,
                 idempotency_key=item.idempotencyKey,
+                batch_id=batch_uuid,
             )
             if created:
                 charged += cost
@@ -238,7 +244,9 @@ async def create_jobs_batch(
             )
         raise
 
-    return BatchJobResponse(jobs=responses, charged=charged, duplicates=len(plan) - new_count)
+    return BatchJobResponse(
+        jobs=responses, batchId=str(batch_uuid), charged=charged, duplicates=len(plan) - new_count
+    )
 
 
 @app.post("/v1/exports/zip")
@@ -278,6 +286,49 @@ async def export_jobs_zip(
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="tryon_batch.zip"'},
     )
+
+
+@app.get("/v1/batches", response_model=list[BatchSummary])
+async def list_batches(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> list[BatchSummary]:
+    """出图记录「按批次」：把同一次批量出图的任务聚合成一张卡的数据。"""
+    jobs = await job_service.list_batched_jobs(db, user_id=user.id)
+    # 按 batch_id 分组（保持创建时间倒序：jobs 已倒序，首次出现即最新）
+    order: list[str] = []
+    groups: dict[str, list[Job]] = {}
+    for j in jobs:
+        bid = str(j.batch_id)
+        if bid not in groups:
+            groups[bid] = []
+            order.append(bid)
+        groups[bid].append(j)
+
+    out: list[BatchSummary] = []
+    for bid in order:
+        items = groups[bid]
+        thumbs: list[str] = []
+        for j in items:
+            if j.status == "succeeded":
+                img = next((a for a in (j.artifacts_json or []) if a.get("kind") == "image" and a.get("url")), None)
+                if img and len(thumbs) < 8:
+                    thumbs.append(img["url"])
+        created = min(j.created_at for j in items)
+        out.append(
+            BatchSummary(
+                batchId=bid,
+                createdAt=created.isoformat() if created else "",
+                jobType=items[0].job_type if items else None,
+                total=len(items),
+                succeeded=sum(1 for j in items if j.status == "succeeded"),
+                failed=sum(1 for j in items if j.status == "failed"),
+                running=sum(1 for j in items if j.status == "running"),
+                queued=sum(1 for j in items if j.status == "queued"),
+                thumbnails=thumbs,
+                jobIds=[str(j.id) for j in items],
+            )
+        )
+    return out
 
 
 @app.get("/v1/jobs/{job_id}", response_model=JobResponse)

@@ -72,6 +72,8 @@ class BatchJobCreateRequest(BaseModel):
 
 class BatchJobResponse(BaseModel):
     jobs: list["JobResponse"]
+    # 本次批量的分组 id（出图记录按批次聚合用）
+    batchId: str
     # 本次实际新建任务所扣的总额度（幂等命中的已存在任务不计费）
     charged: int
     # 命中幂等键、复用已存在任务的数量（未重复扣费）
@@ -82,6 +84,21 @@ class ExportZipRequest(BaseModel):
     """把若干任务的成功出图打包成一个 ZIP 下载。"""
 
     jobIds: list[str] = Field(..., min_length=1, max_length=200)
+
+
+class BatchSummary(BaseModel):
+    """一次批量出图的汇总（出图记录「按批次」视图）。"""
+
+    batchId: str
+    createdAt: str
+    jobType: str | None = None
+    total: int
+    succeeded: int
+    failed: int
+    running: int
+    queued: int
+    thumbnails: list[str]  # 最多若干张成功出图的图片 URL，供卡片预览
+    jobIds: list[str]  # 该批次全部任务 id（供「重新打包下载」复用 /v1/exports/zip）
 
 
 class JobArtifact(BaseModel):

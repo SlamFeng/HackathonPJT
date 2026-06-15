@@ -175,9 +175,30 @@ export type BatchJobItem = {
 
 export type BatchJobResponse = {
   jobs: JobResponse[];
+  batchId: string;
   charged: number;
   duplicates: number;
 };
+
+export type BatchSummary = {
+  batchId: string;
+  createdAt: string;
+  jobType?: string;
+  total: number;
+  succeeded: number;
+  failed: number;
+  running: number;
+  queued: number;
+  thumbnails: string[];
+  jobIds: string[];
+};
+
+// 出图记录「按批次」：列出本用户的所有批量出图分组。
+export async function listBatches() {
+  const res = await apiFetch(`${API_BASE}/v1/batches`, { cache: "no-store" });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()) as BatchSummary[];
+}
 
 // 批量出图：一次提交多个生成任务。后端先按总额度原子扣减，余额不足整批拒绝（402）。
 export async function createJobsBatch(items: BatchJobItem[]) {

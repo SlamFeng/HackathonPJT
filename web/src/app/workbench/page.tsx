@@ -36,6 +36,17 @@ function comboKey(poseId: PoseId, garmentId: string) {
   return `${poseId}:${garmentId}`;
 }
 
+// worker 并发≈2，单张约 10–30s；据此给出粗略时长区间，让卖家心里有数。
+const WORKER_CONCURRENCY = 2;
+function fmtDuration(sec: number) {
+  if (sec < 60) return `${sec} 秒`;
+  return `${Math.max(1, Math.round(sec / 60))} 分钟`;
+}
+function estTimeRange(n: number) {
+  const waves = Math.ceil(n / WORKER_CONCURRENCY);
+  return `${fmtDuration(waves * 10)}–${fmtDuration(waves * 30)}`;
+}
+
 type CellStatus = "running" | "succeeded" | "failed";
 type Cell = {
   key: string;
@@ -57,10 +68,14 @@ export default function WorkbenchPage() {
   const [selectedPoses, setSelectedPoses] = useState<Set<PoseId>>(new Set());
   const [skipExisting, setSkipExisting] = useState(true);
   const [running, setRunning] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [zipBusy, setZipBusy] = useState(false);
   // 本次批量运行的逐格状态（key = pose:garment）
   const [cells, setCells] = useState<Record<string, Cell>>({});
+
+  // 姿态准备进度（模特创建后姿态在后台预生成，这里把它显性化）
+  const poseRunningCount = POSES.filter((p) => avatar.poseRenders[p.id]?.status === "running").length;
 
   // 当前模特已就绪（已生成姿态图）的姿态集合
   const readyPoses = useMemo(
@@ -132,31 +147,47 @@ export default function WorkbenchPage() {
     }
   }
 
-  async function handleRun() {
+  // 校验后弹出确认（透明展示张数/时长/额度），由用户确认再真正生成
+  function handleRunClick() {
     setError(null);
     if (!avatar.avatarId || !avatar.avatarImageUrl) {
-      setError("请先在「数字人」生成一个模特");
+      setError("请先到「模特库」创建一个模特");
       return;
     }
     if (toGenerate.length === 0) {
-      setError("没有需要生成的组合：请选择单品与已就绪的姿态");
+      setError("没有需要生成的组合：请选择商品与已就绪的姿态");
       return;
     }
     if (overLimit) {
       setError(`单次最多 ${BATCH_LIMIT} 张，请减少选择（当前 ${toGenerate.length} 张）`);
       return;
     }
+    setConfirming(true);
+  }
 
+  async function handleConfirmRun() {
+    setConfirming(false);
+    setCells({}); // 新的一次完整运行：清空旧网格
+    await runCombos(toGenerate.map((c) => ({ key: c.key, poseId: c.poseId, garment: c.garment })));
+  }
+
+  type RunCombo = { key: string; poseId: PoseId; garment: ClosetItem };
+
+  // 真正执行：把给定组合入队并轮询；合并进 cells（用于完整运行与失败重试两种场景）
+  async function runCombos(combosToRun: RunCombo[]) {
+    if (combosToRun.length === 0) return;
+    setError(null);
     setRunning(true);
-    // 初始化逐格状态为 running
-    const initial: Record<string, Cell> = {};
-    for (const c of toGenerate) {
-      initial[c.key] = { key: c.key, poseId: c.poseId, garment: c.garment, status: "running" };
-    }
-    setCells(initial);
+    // 先把这些格置为 running（合并，不影响其它格）
+    setCells((prev) => {
+      const next = { ...prev };
+      for (const c of combosToRun) {
+        next[c.key] = { key: c.key, poseId: c.poseId, garment: c.garment, status: "running" };
+      }
+      return next;
+    });
 
-    // 构造批量任务（每个组合一个 vton_tryon），顺序与 toGenerate 对齐
-    const items: BatchJobItem[] = toGenerate.map((c) => {
+    const items: BatchJobItem[] = combosToRun.map((c) => {
       const poseUrl = avatar.poseRenders[c.poseId]!.imageUrl!;
       return {
         jobType: "vton_tryon",
@@ -172,19 +203,17 @@ export default function WorkbenchPage() {
 
     try {
       const batch = await createJobsBatch(items);
-      // 把 jobId 回填到各格
       setCells((prev) => {
         const next = { ...prev };
-        toGenerate.forEach((c, i) => {
+        combosToRun.forEach((c, i) => {
           const jobId = batch.jobs[i]?.jobId;
           if (jobId && next[c.key]) next[c.key] = { ...next[c.key]!, jobId };
         });
         return next;
       });
 
-      // 并发轮询每个任务，逐格更新结果
       await Promise.all(
-        toGenerate.map(async (c, i) => {
+        combosToRun.map(async (c, i) => {
           const jobId = batch.jobs[i]?.jobId;
           if (!jobId) {
             setCells((p) => ({ ...p, [c.key]: { ...p[c.key]!, status: "failed", error: "未创建任务" } }));
@@ -195,10 +224,8 @@ export default function WorkbenchPage() {
             const meta = (image.meta ?? {}) as Record<string, unknown>;
             const isMock = meta.mode === "mock";
             const abs = absUrl(image.url);
-            setCells((p) => ({ ...p, [c.key]: { ...p[c.key]!, status: "succeeded", imageUrl: abs } }));
-            // 同步到 store，让「工作室」「历史」也能看到
+            setCells((p) => ({ ...p, [c.key]: { ...p[c.key]!, status: "succeeded", imageUrl: abs, error: undefined } }));
             setTryOnRender(c.key, { status: "succeeded", progress: 1, imageUrl: abs });
-            // 落库（mock 不入库，与工作室一致）
             if (avatar.avatarId && !isMock) {
               try {
                 await createTryon({
@@ -221,12 +248,30 @@ export default function WorkbenchPage() {
         }),
       );
     } catch (e) {
-      // 整批被拒（如额度不足 402）：清空逐格状态并提示
-      setCells({});
+      // 整批被拒（如额度不足 402，未创建任何任务）：撤回本次置为 running 的格子
+      setCells((prev) => {
+        const next = { ...prev };
+        for (const c of combosToRun) {
+          if (next[c.key]?.status === "running" && !next[c.key]?.jobId) delete next[c.key];
+        }
+        return next;
+      });
       setError(e instanceof Error ? e.message : "批量生成失败");
     } finally {
       setRunning(false);
     }
+  }
+
+  // 重试单格
+  function retryCell(c: Cell) {
+    void runCombos([{ key: c.key, poseId: c.poseId, garment: c.garment }]);
+  }
+  // 重试全部失败项
+  function retryAllFailed() {
+    const failed = Object.values(cells)
+      .filter((c) => c.status === "failed")
+      .map((c) => ({ key: c.key, poseId: c.poseId, garment: c.garment }));
+    void runCombos(failed);
   }
 
   async function handleDownloadZip() {
@@ -274,6 +319,14 @@ export default function WorkbenchPage() {
         <Guard text="商品库是空的。先上传一批新品，再回来批量出图。" href="/closet" cta="去上传新品" />
       ) : (
         <>
+          {/* 姿态准备进度：模特创建后姿态在后台预生成，这里显性化，避免「未就绪」让人困惑 */}
+          {poseRunningCount > 0 ? (
+            <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+              正在准备模特姿态 {readyPoses.length}/{POSES.length}（剩余 {poseRunningCount} 个生成中，完成后即可用于出图）。
+            </div>
+          ) : null}
+
           {/* Step 1：选模特 */}
           <Card step="1" title="选择模特" hint={`当前：${avatar.avatarId ? "已选" : "未选"}`}>
             <div className="flex flex-wrap gap-3">
@@ -312,9 +365,9 @@ export default function WorkbenchPage() {
           >
             {readyPoses.length === 0 ? (
               <div className="rounded-2xl bg-amber-50 p-4 text-xs text-amber-800">
-                当前模特还没有任何已生成的姿态图。姿态会在生成数字人后自动预生成，或到
+                当前模特还没有任何已生成的姿态图。姿态会在创建模特后自动预生成，或到
                 <Link href="/studio" className="mx-1 font-medium underline">
-                  工作室
+                  单张精修
                 </Link>
                 手动生成后再回来。
               </div>
@@ -403,7 +456,8 @@ export default function WorkbenchPage() {
                   {skipExisting && combos.length !== toGenerate.length ? (
                     <span>（跳过 {combos.length - toGenerate.length} 个已生成）</span>
                   ) : null}
-                  ，待生成 <strong className="text-zinc-900">{toGenerate.length}</strong> 张， 预计消耗{" "}
+                  ，待生成 <strong className="text-zinc-900">{toGenerate.length}</strong> 张，预计耗时{" "}
+                  <strong className="text-zinc-900">{estTimeRange(toGenerate.length)}</strong>，消耗{" "}
                   <strong className="text-zinc-900">{estCost}</strong> 额度。
                 </div>
                 <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-zinc-600">
@@ -420,11 +474,11 @@ export default function WorkbenchPage() {
                 ) : null}
               </div>
               <button
-                onClick={handleRun}
-                disabled={running || toGenerate.length === 0 || overLimit}
+                onClick={handleRunClick}
+                disabled={running || confirming || toGenerate.length === 0 || overLimit}
                 className={[
                   "shrink-0 rounded-full px-6 py-3 text-sm font-medium transition-colors",
-                  running || toGenerate.length === 0 || overLimit
+                  running || confirming || toGenerate.length === 0 || overLimit
                     ? "bg-zinc-200 text-zinc-500"
                     : "bg-zinc-950 text-zinc-50 hover:bg-zinc-800",
                 ].join(" ")}
@@ -432,6 +486,30 @@ export default function WorkbenchPage() {
                 {running ? `生成中… ${doneCount + failCount}/${cellList.length}` : `批量生成 ${toGenerate.length} 张`}
               </button>
             </div>
+
+            {/* 确认条：透明展示张数/时长/额度，避免误触大额生成 */}
+            {confirming ? (
+              <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-zinc-900 bg-zinc-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-zinc-700">
+                  将生成 <strong>{toGenerate.length}</strong> 张 · 预计耗时{" "}
+                  <strong>{estTimeRange(toGenerate.length)}</strong> · 消耗 <strong>{estCost}</strong> 额度。确认开始？
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    onClick={() => setConfirming(false)}
+                    className="rounded-full border border-zinc-300 px-4 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleConfirmRun}
+                    className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-medium text-zinc-50 hover:bg-zinc-800"
+                  >
+                    确认生成
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </Card>
 
           {/* 结果网格 */}
@@ -441,15 +519,26 @@ export default function WorkbenchPage() {
               title="生成结果"
               hint={`成功 ${doneCount} · 失败 ${failCount} · 共 ${cellList.length}`}
               action={
-                succeededCells.length > 0 ? (
-                  <button
-                    onClick={handleDownloadZip}
-                    disabled={zipBusy}
-                    className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-medium text-zinc-50 hover:bg-zinc-800 disabled:opacity-50"
-                  >
-                    {zipBusy ? "打包中…" : `打包下载 ${succeededCells.length} 张`}
-                  </button>
-                ) : null
+                <div className="flex items-center gap-2">
+                  {failCount > 0 ? (
+                    <button
+                      onClick={retryAllFailed}
+                      disabled={running}
+                      className="rounded-full border border-zinc-300 px-4 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+                    >
+                      重试失败 {failCount} 项
+                    </button>
+                  ) : null}
+                  {succeededCells.length > 0 ? (
+                    <button
+                      onClick={handleDownloadZip}
+                      disabled={zipBusy}
+                      className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-medium text-zinc-50 hover:bg-zinc-800 disabled:opacity-50"
+                    >
+                      {zipBusy ? "打包中…" : `打包下载 ${succeededCells.length} 张`}
+                    </button>
+                  ) : null}
+                </div>
               }
             >
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
@@ -459,11 +548,20 @@ export default function WorkbenchPage() {
                       {c.imageUrl ? (
                         <img src={c.imageUrl} alt="result" className="h-full w-full object-contain" />
                       ) : (
-                        <div className="flex h-full w-full items-center justify-center">
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-3">
                           {c.status === "running" ? (
                             <div className="h-2 w-16 animate-pulse rounded-full bg-zinc-300" />
                           ) : (
-                            <div className="px-3 text-center text-[11px] text-red-500">{c.error ?? "失败"}</div>
+                            <>
+                              <div className="text-center text-[11px] text-red-500">{c.error ?? "失败"}</div>
+                              <button
+                                onClick={() => retryCell(c)}
+                                disabled={running}
+                                className="rounded-full border border-zinc-300 px-3 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+                              >
+                                重试
+                              </button>
+                            </>
                           )}
                         </div>
                       )}

@@ -26,6 +26,7 @@ async def create_or_get(
     inputs: dict[str, Any],
     constraints: dict[str, Any] | None,
     idempotency_key: str | None,
+    batch_id: uuid.UUID | None = None,
 ) -> tuple[Job, bool]:
     """创建排队任务；若同一用户的同一幂等键已存在则返回已有任务。返回 (job, created)。"""
     if idempotency_key:
@@ -40,6 +41,7 @@ async def create_or_get(
     job = Job(
         user_id=user.id,
         job_type=job_type,
+        batch_id=batch_id,
         provider_preference=provider_preference,
         status="queued",
         stage="queued",
@@ -75,6 +77,16 @@ async def find_existing(db: AsyncSession, *, user: User, idempotency_key: str | 
             select(Job).where(Job.user_id == user.id, Job.idempotency_key == idempotency_key)
         )
     ).scalar_one_or_none()
+
+
+async def list_batched_jobs(db: AsyncSession, *, user_id: uuid.UUID) -> list[Job]:
+    """该用户所有「属于某个批次」的任务，按创建时间倒序（用于出图记录按批次聚合）。"""
+    res = await db.execute(
+        select(Job)
+        .where(Job.user_id == user_id, Job.batch_id.isnot(None))
+        .order_by(Job.created_at.desc())
+    )
+    return list(res.scalars().all())
 
 
 async def get_owned(db: AsyncSession, *, user: User, job_id: str) -> Job | None:

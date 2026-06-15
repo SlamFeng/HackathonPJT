@@ -38,3 +38,17 @@ async def init_models() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # create_all 不会为已存在的表补列；这里对 SQLite 做幂等的轻量补列，
+        # 让老的 local.db 升级后不必删库（Postgres 走 alembic，不进这里）。
+        await conn.run_sync(_ensure_sqlite_columns)
+
+
+def _ensure_sqlite_columns(conn) -> None:
+    """SQLite：为已存在的表按需补充新列（ADD COLUMN 是安全的幂等操作）。"""
+    from sqlalchemy import inspect as sa_inspect, text
+
+    insp = sa_inspect(conn)
+    if "jobs" in insp.get_table_names():
+        cols = {c["name"] for c in insp.get_columns("jobs")}
+        if "batch_id" not in cols:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN batch_id CHAR(32)"))

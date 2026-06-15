@@ -157,6 +157,8 @@ class Job(Base):
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
     job_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    # 批量出图分组：同一次 /v1/jobs/batch 的任务共享一个 batch_id（单任务为 NULL）。
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), index=True)
     provider_preference: Mapped[str | None] = mapped_column(String(40))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued", server_default="queued", index=True)
     stage: Mapped[str | None] = mapped_column(String(40))
