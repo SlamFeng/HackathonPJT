@@ -74,6 +74,20 @@ export type GenerationLogDetail = GenerationLogListItem & {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+// 统一携带会话 Cookie；遇到 401 自动跳转登录页。
+async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(input, { ...init, credentials: "include" });
+  if (
+    res.status === 401 &&
+    typeof window !== "undefined" &&
+    !window.location.pathname.startsWith("/login") &&
+    !window.location.pathname.startsWith("/register")
+  ) {
+    window.location.href = "/login";
+  }
+  return res;
+}
+
 export function absUrl(pathOrUrl: string) {
   if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) return pathOrUrl;
   return `${API_BASE}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`;
@@ -83,13 +97,23 @@ export async function uploadAsset(file: File) {
   const form = new FormData();
   form.append("file", file);
 
-  const res = await fetch(`${API_BASE}/v1/assets/upload`, {
+  const res = await apiFetch(`${API_BASE}/v1/assets/upload`, {
     method: "POST",
     body: form,
   });
   if (!res.ok) throw new Error(await res.text());
   const data = (await res.json()) as { assetId: string; url: string };
-  return { assetId: data.assetId, url: absUrl(data.url) };
+  // url: 绝对地址（用于直接展示）；rawUrl: 相对路径 /v1/files/<key>（用于落库，便于跨主机部署）
+  return { assetId: data.assetId, url: absUrl(data.url), rawUrl: data.url };
+}
+
+function newIdempotencyKey(): string {
+  try {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  } catch {
+    /* ignore */
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 export async function createJob(input: {
@@ -104,8 +128,11 @@ export async function createJob(input: {
     qualityLevel?: "standard" | "high";
     timeoutSec?: number;
   };
+  // 幂等键：默认每次提交生成一个新 UUID（防止网络重试重复创建）；
+  // 调用方可显式传入稳定的 key，对同一逻辑操作做去重。
+  idempotencyKey?: string;
 }) {
-  const res = await fetch(`${API_BASE}/v1/jobs`, {
+  const res = await apiFetch(`${API_BASE}/v1/jobs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -113,14 +140,104 @@ export async function createJob(input: {
       providerPreference: input.providerPreference ?? "nanobanana_first",
       inputs: input.inputs,
       constraints: input.constraints ?? {},
+      idempotencyKey: input.idempotencyKey ?? newIdempotencyKey(),
     }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    let msg = await res.text();
+    try {
+      const d = JSON.parse(msg);
+      if (d?.detail) msg = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+    } catch {
+      /* keep raw */
+    }
+    throw new Error(msg);
+  }
+  // 扣了额度，通知顶栏刷新余额
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("credits-changed"));
   return (await res.json()) as JobResponse;
 }
 
+export type BatchJobItem = {
+  jobType: JobType;
+  providerPreference?: ProviderPreference;
+  inputs: Record<string, unknown>;
+  constraints?: {
+    identityLock?: boolean;
+    poseLock?: boolean;
+    garmentLock?: boolean;
+    seed?: number;
+    qualityLevel?: "standard" | "high";
+    timeoutSec?: number;
+  };
+  idempotencyKey?: string;
+};
+
+export type BatchJobResponse = {
+  jobs: JobResponse[];
+  charged: number;
+  duplicates: number;
+};
+
+// 批量出图：一次提交多个生成任务。后端先按总额度原子扣减，余额不足整批拒绝（402）。
+export async function createJobsBatch(items: BatchJobItem[]) {
+  const res = await apiFetch(`${API_BASE}/v1/jobs/batch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jobs: items.map((it) => ({
+        jobType: it.jobType,
+        providerPreference: it.providerPreference ?? "nanobanana_first",
+        inputs: it.inputs,
+        constraints: it.constraints ?? {},
+        idempotencyKey: it.idempotencyKey ?? newIdempotencyKey(),
+      })),
+    }),
+  });
+  if (!res.ok) {
+    let msg = await res.text();
+    try {
+      const d = JSON.parse(msg);
+      if (d?.detail) msg = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+    } catch {
+      /* keep raw */
+    }
+    throw new Error(msg);
+  }
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("credits-changed"));
+  return (await res.json()) as BatchJobResponse;
+}
+
+// 把若干任务的成功出图打包成 ZIP 并触发浏览器下载。
+export async function exportJobsZip(jobIds: string[]) {
+  const res = await apiFetch(`${API_BASE}/v1/exports/zip`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobIds }),
+  });
+  if (!res.ok) {
+    let msg = await res.text();
+    try {
+      const d = JSON.parse(msg);
+      if (d?.detail) msg = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail);
+    } catch {
+      /* keep raw */
+    }
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "tryon_batch.zip";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function getJob(jobId: string) {
-  const res = await fetch(`${API_BASE}/v1/jobs/${jobId}`, { cache: "no-store" });
+  const res = await apiFetch(`${API_BASE}/v1/jobs/${jobId}`, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as JobResponse;
 }
@@ -160,14 +277,14 @@ export async function waitForImageJob(
 }
 
 export async function listGenerationLogs(limit = 50) {
-  const res = await fetch(`${API_BASE}/v1/debug/generation-logs?limit=${limit}`, { cache: "no-store" });
+  const res = await apiFetch(`${API_BASE}/v1/debug/generation-logs?limit=${limit}`, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
   const data = (await res.json()) as { logs: GenerationLogListItem[] };
   return data.logs;
 }
 
 export async function getGenerationLog(logId: string) {
-  const res = await fetch(`${API_BASE}/v1/debug/generation-logs/${logId}`, { cache: "no-store" });
+  const res = await apiFetch(`${API_BASE}/v1/debug/generation-logs/${logId}`, { cache: "no-store" });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()) as GenerationLogDetail;
 }

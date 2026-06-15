@@ -13,9 +13,17 @@ node_modules/
 .env.*
 !.env.example
 
-### Outputs
-storage/
-data/
+### Local SQLite database (本地零配置开发数据库)
+*.db
+*.sqlite3
+
+### Local test scratch (本地生成测试的输入/结果，不入库)
+_testinputs/
+_genreport/
+
+### Outputs（运行时生成目录，锚定到 api/ 下，避免误伤 app/storage 代码包）
+/api/storage/
+/api/data/
 *.jpg
 *.jpeg
 *.png

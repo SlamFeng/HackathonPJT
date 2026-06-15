@@ -1,8 +1,14 @@
 # AI 智能试衣间（nanobanana-first）开发说明
 
+> 🚀 **只想把项目跑起来？** 看 **[QUICKSTART.md](QUICKSTART.md)** —— Windows 双击 `start.bat`，macOS 双击 `start.command`，非技术同学也能用。
+> 下面是面向开发者的详细说明。
+
 本仓库为前后端分离的 MVP 骨架，目录结构：
 - `web/`：Next.js 前端（页面预览）
 - `api/`：FastAPI 后端（上传/任务系统/SSE）
+- `start.bat`（Windows）/ `start.command`（macOS·Linux）：一键本地启动（零配置 SQLite 模式）
+- `scripts/start-local.ps1` · `scripts/start-local.sh`：上面两个入口对应的启动脚本
+- `scripts/verify-e2e.ps1`：端到端自检脚本
 
 ## 1. 首次启动（或新机器）
 

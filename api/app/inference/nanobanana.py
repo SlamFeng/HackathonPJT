@@ -11,6 +11,7 @@ from typing import Any
 
 import httpx
 
+from .. import runtime_config
 from ..generation_logs import generation_log_store
 from ..prompts import build_prompt, self_correction_prompt
 from ..settings import settings
@@ -235,20 +236,17 @@ class NanobananaProvider:
         return storage_path
 
     async def _read_uploaded_image(self, image_url: str, *, timeout: float = 20) -> tuple[bytes, str]:
-        if image_url.startswith("/static/"):
-            name = image_url.removeprefix("/static/").split("?", 1)[0]
-            path = self._storage_path() / name
+        # 本地图片（/v1/files/<key> 或 /static/<key>，含绝对 URL）：解析 key 直接读本地文件
+        name: str | None = None
+        for prefix in ("/v1/files/", "/static/"):
+            if prefix in image_url:
+                name = image_url.split(prefix, 1)[1].split("?", 1)[0].strip("/")
+                break
+        if name:
+            path = self._storage_path() / Path(name).name
             data = path.read_bytes()
             mime = mimetypes.guess_type(str(path))[0] or "image/png"
             return data, mime
-
-        if "/static/" in image_url:
-            name = image_url.split("/static/", 1)[1].split("?", 1)[0]
-            path = self._storage_path() / name
-            if path.exists():
-                data = path.read_bytes()
-                mime = mimetypes.guess_type(str(path))[0] or "image/png"
-                return data, mime
 
         mime = "image/png"
         try:
@@ -268,10 +266,11 @@ class NanobananaProvider:
         out_name = f"{uuid.uuid4().hex}{ext}"
         out_path = self._storage_path() / out_name
         out_path.write_bytes(image_bytes)
-        return f"/static/{out_name}"
+        # Phase 4：返回鉴权取图 URL（公开 /static 已移除）
+        return f"/v1/files/{out_name}"
 
     def _default_endpoint(self) -> str:
-        model = settings.nanobanana_model or "gemini-3.1-flash-image-preview"
+        model = runtime_config.get_model()
         return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
     def _endpoint_for_model(self, model: str) -> str:
@@ -318,7 +317,7 @@ class NanobananaProvider:
     @property
     def _model_fallback_chain(self) -> list[str]:
         """方案 C: 模型降级兜底链。主线模型失败时自动切到更稳定的 fallback 模型。"""
-        primary = settings.nanobanana_model or "gemini-3.1-flash-image-preview"
+        primary = runtime_config.get_model()
         seen: list[str] = []
         for m in [primary, "gemini-2.5-flash-image"]:
             if m not in seen:
@@ -341,7 +340,7 @@ class NanobananaProvider:
             "generationConfig": {"responseModalities": modalities},
         }
         headers = {
-            "x-goog-api-key": settings.nanobanana_api_key,
+            "x-goog-api-key": runtime_config.get_api_key(),
             "Content-Type": "application/json",
         }
 
@@ -601,7 +600,7 @@ class NanobananaProvider:
                 }
                 await generation_log_store.finish(log_id, status="succeeded", final_image_url=result["imageUrl"], meta=result["meta"])
                 return result
-            if not settings.nanobanana_api_key:
+            if not runtime_config.get_api_key():
                 result = {
                     "imageUrl": avatar_url,
                     "meta": {
@@ -615,7 +614,7 @@ class NanobananaProvider:
                 return result
         else:
             image_url = inputs.get("imageUrl") or inputs.get("avatarImageUrl") or inputs.get("garmentImageUrl")
-            if not settings.nanobanana_api_key or not image_url:
+            if not runtime_config.get_api_key() or not image_url:
                 result = {
                     "imageUrl": image_url,
                     "meta": {
@@ -877,7 +876,7 @@ class NanobananaProvider:
         if not image_url:
             await generation_log_store.finish(log_id, status="failed", error="缺少 imageUrl", meta=meta)
             raise RuntimeError("缺少 imageUrl")
-        if not settings.nanobanana_api_key:
+        if not runtime_config.get_api_key():
             meta["mode"] = "mock"
             meta["reason"] = "missing_api_key"
             await generation_log_store.finish(log_id, status="succeeded", final_image_url=str(image_url), meta=meta)

@@ -5,6 +5,14 @@ import { z } from "zod";
 
 import { absUrl, createJob, uploadAsset, waitForImageJob } from "@/lib/api";
 import { formatMessage, useI18n } from "@/lib/i18n";
+import {
+  createAvatar,
+  deleteAvatar as deleteAvatarApi,
+  listAvatars,
+  setDefaultAvatar,
+  upsertPose,
+} from "@/lib/assets";
+import { switchToAvatar } from "@/lib/useHydrateAssets";
 import { POSES, PoseId, useAppStore } from "@/stores/useAppStore";
 import AutoAspectImage from "@/components/AutoAspectImage";
 
@@ -54,6 +62,36 @@ export default function AvatarPage() {
   const setPoseRender = useAppStore((s) => s.setPoseRender);
   const patchPoseRender = useAppStore((s) => s.patchPoseRender);
   const avatar = useAppStore((s) => s.avatar);
+  const avatars = useAppStore((s) => s.avatars);
+  const setAvatars = useAppStore((s) => s.setAvatars);
+
+  async function refreshAvatars() {
+    try {
+      const list = await listAvatars();
+      setAvatars(list.map((a) => ({ id: a.id, name: a.name, imageUrl: absUrl(a.imageUrl), isDefault: a.isDefault })));
+    } catch {
+      /* 忽略列表刷新失败 */
+    }
+  }
+
+  async function handleSwitchAvatar(id: string, imageUrlAbs: string) {
+    try {
+      await setDefaultAvatar(id);
+      await switchToAvatar(id, imageUrlAbs);
+      await refreshAvatars();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t.avatar.fallbackError);
+    }
+  }
+
+  async function handleDeleteAvatar(id: string) {
+    try {
+      await deleteAvatarApi(id);
+      await refreshAvatars();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t.avatar.fallbackError);
+    }
+  }
 
   const [file, setFile] = useState<File | null>(null);
   const [form, setForm] = useState<BodyFormState>({
@@ -83,7 +121,7 @@ export default function AvatarPage() {
     [t],
   );
 
-  async function generatePoseInBackground(avatarImageUrl: string, nextPoseId: PoseId) {
+  async function generatePoseInBackground(avatarImageUrl: string, nextPoseId: PoseId, avatarId?: string) {
     setPoseRender(nextPoseId, { status: "running", progress: 0.05 });
     try {
       const job = await createJob({
@@ -105,6 +143,14 @@ export default function AvatarPage() {
         progress: 1,
         imageUrl: absUrl(image.url),
       });
+      // 落库：把姿态图持久化到该数字人名下（image.url 为相对 /static 路径）
+      if (avatarId) {
+        try {
+          await upsertPose(avatarId, nextPoseId, { imageUrl: image.url, jobId: job.jobId });
+        } catch {
+          /* 持久化失败不影响前端展示 */
+        }
+      }
     } catch (e) {
       setPoseRender(nextPoseId, {
         status: "failed",
@@ -114,8 +160,8 @@ export default function AvatarPage() {
     }
   }
 
-  function startPosePrefetch(avatarImageUrl: string) {
-    void Promise.all(POSES.map((pose) => generatePoseInBackground(avatarImageUrl, pose.id)));
+  function startPosePrefetch(avatarImageUrl: string, avatarId?: string) {
+    void Promise.all(POSES.map((pose) => generatePoseInBackground(avatarImageUrl, pose.id, avatarId)));
   }
 
   async function handleGenerate() {
@@ -156,10 +202,24 @@ export default function AvatarPage() {
       });
       const avatarImageUrl = absUrl(image.url);
       // 后端通常返回 /static/xxx.png（相对 API 服务），这里转成绝对 URL，避免前端去请求 localhost:3000/static 导致看不到结果
-      setAvatar({ avatarImageUrl });
+      // 落库：保存为该用户的一个数字人（image.url 为相对路径，便于服务端统一存储）
+      let avatarId: string | undefined;
+      try {
+        const saved = await createAvatar({
+          imageUrl: image.url,
+          paramsJson: parsed.data,
+          sourceJobId: job.jobId,
+          makeDefault: true,
+        });
+        avatarId = saved.id;
+        await refreshAvatars();
+      } catch {
+        /* 持久化失败时仍然走本地展示 */
+      }
+      setAvatar({ avatarId, avatarImageUrl });
       setProgress(1);
       setStage(latest.status === "succeeded" ? "doneWithPrefetch" : "done");
-      startPosePrefetch(avatarImageUrl);
+      startPosePrefetch(avatarImageUrl, avatarId);
       return;
     } catch (e) {
       setError(e instanceof Error ? e.message : t.avatar.fallbackError);
@@ -240,6 +300,43 @@ export default function AvatarPage() {
           </button>
         </div>
       </div>
+
+      {avatars.length > 0 ? (
+        <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
+          <div className="text-xs text-zinc-500">{t.avatar.myAvatars}</div>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {avatars.map((a) => {
+              const active = a.id === avatar.avatarId;
+              return (
+                <div key={a.id} className="relative">
+                  <button
+                    onClick={() => handleSwitchAvatar(a.id, a.imageUrl)}
+                    className={[
+                      "block h-28 w-20 overflow-hidden rounded-2xl border-2 transition-colors",
+                      active ? "border-zinc-900" : "border-transparent hover:border-zinc-300",
+                    ].join(" ")}
+                    title={a.isDefault ? t.avatar.defaultAvatarTitle : t.avatar.setCurrentTitle}
+                  >
+                    <img src={a.imageUrl} alt={t.common.avatarAlt} className="h-full w-full bg-zinc-100 object-cover" />
+                  </button>
+                  {a.isDefault ? (
+                    <span className="absolute left-1 top-1 rounded-full bg-zinc-900 px-1.5 py-0.5 text-[10px] text-zinc-50">
+                      {t.avatar.defaultLabel}
+                    </span>
+                  ) : null}
+                  <button
+                    onClick={() => handleDeleteAvatar(a.id)}
+                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs text-zinc-500 shadow ring-1 ring-zinc-200 hover:text-red-600"
+                    title={t.avatar.delete}
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">

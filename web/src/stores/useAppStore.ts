@@ -64,29 +64,58 @@ export type TryOnRenderState = {
 };
 
 type AvatarState = {
+  avatarId?: string;
   avatarImageUrl?: string;
   refFaceUrl?: string;
   poseRenders: Partial<Record<PoseId, PoseRenderState>>;
   tryOnRenders: Record<string, TryOnRenderState>;
 };
 
+// 数字人列表项（多数字人选择器用）
+export type AvatarSummary = {
+  id: string;
+  name: string | null;
+  imageUrl: string;
+  isDefault: boolean;
+};
+
 type AppState = {
   avatar: AvatarState;
+  avatars: AvatarSummary[];
+  hydrated: boolean;
   closet: ClosetItem[];
   setAvatar: (avatar: Partial<AvatarState>) => void;
+  setAvatars: (avatars: AvatarSummary[]) => void;
+  setHydrated: (v: boolean) => void;
+  // 切换/载入某个数字人的完整工作集（含其姿态、试穿缓存）
+  loadWorkingSet: (payload: {
+    avatarId: string;
+    avatarImageUrl: string;
+    poseRenders: Partial<Record<PoseId, PoseRenderState>>;
+    tryOnRenders: Record<string, TryOnRenderState>;
+  }) => void;
+  setCloset: (items: ClosetItem[]) => void;
   setPoseRender: (poseId: PoseId, render: PoseRenderState) => void;
   patchPoseRender: (poseId: PoseId, patch: Partial<PoseRenderState>) => void;
   setTryOnRender: (key: string, render: TryOnRenderState) => void;
   patchTryOnRender: (key: string, patch: Partial<TryOnRenderState>) => void;
   clearTryOnRendersForPose: (poseId: PoseId) => void;
   upsertClosetItem: (item: ClosetItem) => void;
+  removeClosetItem: (id: string) => void;
   toggleFavorite: (id: string) => void;
 };
 
 export const useAppStore = create<AppState>((set) => ({
   avatar: { poseRenders: {}, tryOnRenders: {} },
+  avatars: [],
+  hydrated: false,
   closet: [],
   setAvatar: (avatar) => set({ avatar: { poseRenders: {}, tryOnRenders: {}, ...avatar } }),
+  setAvatars: (avatars) => set({ avatars }),
+  setHydrated: (v) => set({ hydrated: v }),
+  loadWorkingSet: ({ avatarId, avatarImageUrl, poseRenders, tryOnRenders }) =>
+    set({ avatar: { avatarId, avatarImageUrl, poseRenders, tryOnRenders } }),
+  setCloset: (items) => set({ closet: items }),
   setPoseRender: (poseId, render) =>
     set((s) => ({
       avatar: {
@@ -138,6 +167,8 @@ export const useAppStore = create<AppState>((set) => ({
       next[idx] = item;
       return { closet: next };
     }),
+  removeClosetItem: (id) =>
+    set((s) => ({ closet: s.closet.filter((x) => x.id !== id) })),
   toggleFavorite: (id) =>
     set((s) => ({
       closet: s.closet.map((x) => (x.id === id ? { ...x, favorited: !x.favorited } : x)),

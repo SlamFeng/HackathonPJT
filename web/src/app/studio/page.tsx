@@ -1,9 +1,10 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { absUrl, createJob, waitForImageJob } from "@/lib/api";
+import { createTryon, upsertPose } from "@/lib/assets";
 import { formatMessage, useI18n } from "@/lib/i18n";
 import {
   ClosetCategory,
@@ -31,6 +32,39 @@ export default function StudioPage() {
   const [poseId, setPoseId] = useState<PoseId>(POSES[0]!.id);
   const [garment, setGarment] = useState<ClosetItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // 刷新/进入页面后，若还没选单品：优先自动恢复一个「已有试穿结果」的 姿态+单品 组合，
+  // 让之前做过的试穿图刷新后直接可见；否则退而选中第一件单品，避免预览区空白。
+  useEffect(() => {
+    if (garment) return;
+    let nextPoseId: PoseId | null = null;
+    let nextGarment: ClosetItem | null = null;
+    for (const key of Object.keys(avatar.tryOnRenders)) {
+      const sep = key.indexOf(":");
+      if (sep < 0) continue;
+      const pk = key.slice(0, sep);
+      const gid = key.slice(sep + 1);
+      const g = closet.find((c) => c.id === gid);
+      if (g && POSES.some((p) => p.id === pk) && avatar.tryOnRenders[key]?.status === "succeeded") {
+        nextPoseId = pk as PoseId;
+        nextGarment = g;
+        break;
+      }
+    }
+    if (!nextGarment && closet.length > 0) {
+      nextGarment = closet[0]!;
+    }
+    if (!nextGarment) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (nextPoseId) setPoseId(nextPoseId);
+      setGarment(nextGarment);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [garment, closet, avatar.tryOnRenders]);
 
   const currentPose = avatar.poseRenders[poseId];
   const poseReady = currentPose?.status === "succeeded" && !!currentPose.imageUrl;
@@ -79,6 +113,14 @@ export default function StudioPage() {
         progress: 1,
         imageUrl: absUrl(image.url),
       });
+      // 落库：覆盖该数字人的这个姿态
+      if (avatar.avatarId) {
+        try {
+          await upsertPose(avatar.avatarId, targetPoseId, { imageUrl: image.url, jobId: job.jobId });
+        } catch {
+          /* 持久化失败不影响展示 */
+        }
+      }
     } catch (e) {
       setPoseRender(targetPoseId, {
         status: "failed",
@@ -132,6 +174,20 @@ export default function StudioPage() {
         overlayGarmentUrl: overlay ? absUrl(overlay) : null,
         overlayTransform: transform,
       });
+      // 落库：保存试穿结果（按 数字人+姿态+单品 唯一，重新试穿覆盖）
+      if (avatar.avatarId && !isMock) {
+        try {
+          await createTryon({
+            avatarId: avatar.avatarId,
+            imageUrl: image.url,
+            closetItemId: garment.id,
+            poseKey: poseId,
+            jobId: job.jobId,
+          });
+        } catch {
+          /* 持久化失败不影响展示 */
+        }
+      }
     } catch (e) {
       setTryOnRender(selectedTryOnKey, {
         status: "failed",
@@ -266,6 +322,8 @@ export default function StudioPage() {
             imageUrl={poseReady ? currentPose?.imageUrl : null}
             loading={poseRunning}
             emptyText={avatar.avatarImageUrl ? t.studio.poseEmptyWithAvatar : t.studio.poseEmptyNoAvatar}
+            imageAlt={t.common.avatarAlt}
+            emptyFallback={t.studio.emptyPreview}
           />
           <PreviewCard
             title={t.studio.tryOnPreview}
@@ -275,8 +333,6 @@ export default function StudioPage() {
             overlayTransform={currentTryOn?.overlayTransform}
             overlayCategory={garment?.category ?? null}
             loading={tryOnRunning}
-            imageAlt={t.common.avatarAlt}
-            overlayAlt={t.common.overlayAlt}
             emptyText={
               !poseReady
                 ? t.studio.tryOnEmptyPoseNotReady
@@ -284,7 +340,9 @@ export default function StudioPage() {
                   ? t.studio.tryOnEmptyWithGarment
                   : t.studio.tryOnEmptyNoGarment
             }
-            fallbackEmptyText={t.studio.emptyPreview}
+            imageAlt={t.studio.tryOnPreview}
+            overlayAlt={t.common.overlayAlt}
+            emptyFallback={t.studio.emptyPreview}
           />
         </div>
       </div>
@@ -337,7 +395,7 @@ function PreviewCard({
   emptyText,
   imageAlt,
   overlayAlt,
-  fallbackEmptyText,
+  emptyFallback,
 }: {
   title: string;
   subtitle: string;
@@ -347,9 +405,9 @@ function PreviewCard({
   overlayCategory?: ClosetCategory | null;
   loading: boolean;
   emptyText?: string;
-  imageAlt?: string;
+  imageAlt: string;
   overlayAlt?: string;
-  fallbackEmptyText?: string;
+  emptyFallback: string;
 }) {
   const overlayStyle = overlayTransform
     ? overlayTransformToStyle(overlayTransform)
@@ -368,11 +426,11 @@ function PreviewCard({
       <div className="relative mt-4 h-[520px] overflow-hidden rounded-3xl bg-zinc-50">
         {imageUrl ? (
           <>
-            <img src={imageUrl} alt={imageAlt ?? title} className="h-full w-full object-contain" />
+            <img src={imageUrl} alt={imageAlt} className="h-full w-full object-contain" />
             {overlayImageUrl ? (
               <img
                 src={overlayImageUrl}
-                alt={overlayAlt ?? "overlay"}
+                alt={overlayAlt ?? ""}
                 className="pointer-events-none absolute object-contain"
                 style={overlayStyle ?? { left: "50%", top: "50%", width: "70%", height: "auto", transform: "translate(-50%, -50%)" }}
               />
@@ -380,7 +438,7 @@ function PreviewCard({
           </>
         ) : (
           <div className="flex h-full w-full items-center justify-center px-10 text-center text-xs text-zinc-500">
-            {emptyText ?? fallbackEmptyText ?? ""}
+            {emptyText ?? emptyFallback}
           </div>
         )}
         {loading ? (
