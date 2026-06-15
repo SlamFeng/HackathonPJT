@@ -35,7 +35,8 @@ services:
       # 容器内通过服务名 db 访问 Postgres
       DATABASE_URL: postgresql+asyncpg://ailurus:ailurus@db:5432/ailurus
       SESSION_SECRET: ${SESSION_SECRET:-dev-insecure-change-me}
-      COOKIE_SECURE: "false"
+      # 生产 HTTPS 下设为 true（前端经 https 访问时 Cookie 必须 Secure 才会下发）
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       # 生成任务交给独立 worker 进程执行（见下方 worker 服务）
       WORKER_IN_PROCESS: "false"
