@@ -31,7 +31,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-neutral-50 p-6">
       <form onSubmit={onSubmit} className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-8 shadow">
-        <h1 className="text-xl font-semibold text-neutral-900">登录 Ailurus</h1>
+        <h1 className="text-xl font-semibold text-neutral-900">登录 · AI 智能试衣间</h1>
         <div className="space-y-1">
           <label className="text-sm text-neutral-600">邮箱</label>
           <input

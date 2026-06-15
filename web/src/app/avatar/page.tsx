@@ -14,6 +14,8 @@ import {
 import { switchToAvatar } from "@/lib/useHydrateAssets";
 import { POSES, PoseId, useAppStore } from "@/stores/useAppStore";
 import AutoAspectImage from "@/components/AutoAspectImage";
+import { UploadField } from "@/components/UploadField";
+import { JobProgress } from "@/components/JobProgress";
 
 const optionalIntInRange = (label: string, min: number, max: number) =>
   z
@@ -79,7 +81,7 @@ export default function AvatarPage() {
       await switchToAvatar(id, imageUrlAbs);
       await refreshAvatars();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "切换数字人失败");
+      setError(e instanceof Error ? e.message : "切换模特失败");
     }
   }
 
@@ -103,8 +105,9 @@ export default function AvatarPage() {
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState<number>(0);
+  const [, setProgress] = useState<number>(0);
   const [stage, setStage] = useState<string>("");
+  const [startedAt, setStartedAt] = useState<number | null>(null);
 
   const canSubmit = useMemo(() => !!file && !busy, [file, busy]);
 
@@ -155,6 +158,7 @@ export default function AvatarPage() {
     setBusy(true);
     setProgress(0);
     setStage("校验输入");
+    setStartedAt(Date.now());
 
     try {
       const parsed = bodySchema.safeParse(form);
@@ -216,30 +220,25 @@ export default function AvatarPage() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
       <div className="rounded-3xl border border-zinc-200/70 bg-white p-6 md:p-8">
-        <div className="text-xs text-zinc-500">数字人生成</div>
+        <div className="text-xs text-zinc-500">创建模特</div>
         <div className="mt-1 text-xl font-semibold tracking-tight">上传全身照并输入体型参数</div>
         <div className="mt-2 text-sm text-zinc-600">
-          仅支持清晰正面免冠全身照（≥1080×1920，≤10MB）。生成结果为写实，身份保持优先。
+          仅支持清晰正面免冠全身照（≥1080×1920，≤10MB）。生成结果为写实，身份保持优先。模特可复用于后续批量出图。
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="rounded-3xl border border-zinc-200/70 bg-zinc-50 p-5">
             <div className="text-sm font-medium">上传照片</div>
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="mt-4 block w-full text-sm file:mr-4 file:rounded-full file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-zinc-50 hover:file:bg-zinc-800"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              disabled={busy}
-            />
             <div className="mt-4">
-              {file ? (
-                <div className="text-xs text-zinc-600">
-                  {file.name} · {(file.size / 1024 / 1024).toFixed(2)}MB
-                </div>
-              ) : (
-                <div className="text-xs text-zinc-500">选择一张图片开始</div>
-              )}
+              <UploadField
+                file={file}
+                onSelect={setFile}
+                maxBytes={10 * 1024 * 1024}
+                recommendW={1080}
+                recommendH={1920}
+                disabled={busy}
+                hint="清晰正面免冠全身照，≥1080×1920，≤10MB"
+              />
             </div>
           </div>
 
@@ -257,25 +256,18 @@ export default function AvatarPage() {
         </div>
 
         <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             {busy ? (
-              <div className="flex items-center gap-3">
-                <div className="h-2 w-48 overflow-hidden rounded-full bg-zinc-200">
-                  <div className="h-full bg-zinc-900 transition-all" style={{ width: `${Math.round(progress * 100)}%` }} />
-                </div>
-                <div className="text-xs text-zinc-600">
-                  {stage} · {Math.round(progress * 100)}%
-                </div>
-              </div>
+              <JobProgress phase="running" label={stage} startedAtMs={startedAt} expectedText="通常 20–60 秒" />
             ) : error ? (
               <div className="text-sm text-red-600">{error}</div>
             ) : (
-              <div className="text-xs text-zinc-500">生成后会自动保存为“当前数字人”</div>
+              <div className="text-xs text-zinc-500">生成后会自动保存为“当前模特”，并在后台预生成各姿态</div>
             )}
           </div>
           <button
             className={[
-              "rounded-full px-5 py-2.5 text-sm font-medium transition-colors",
+              "shrink-0 rounded-full px-5 py-2.5 text-sm font-medium transition-colors",
               canSubmit ? "bg-zinc-950 text-zinc-50 hover:bg-zinc-800" : "bg-zinc-200 text-zinc-500",
             ].join(" ")}
             onClick={handleGenerate}
@@ -288,7 +280,7 @@ export default function AvatarPage() {
 
       {avatars.length > 0 ? (
         <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
-          <div className="text-xs text-zinc-500">我的数字人（点击切换当前数字人）</div>
+          <div className="text-xs text-zinc-500">我的模特（点击切换当前模特）</div>
           <div className="mt-3 flex flex-wrap gap-3">
             {avatars.map((a) => {
               const active = a.id === avatar.avatarId;
@@ -325,7 +317,7 @@ export default function AvatarPage() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
-          <div className="text-xs text-zinc-500">当前数字人</div>
+          <div className="text-xs text-zinc-500">当前模特</div>
           <div className="mt-3">
             {avatar.avatarImageUrl ? (
               <AutoAspectImage
@@ -347,7 +339,7 @@ export default function AvatarPage() {
             <ul className="list-disc space-y-2 pl-5">
               <li>若照片遮挡/侧脸/模糊，身份一致性会明显下降。</li>
               <li>生成质量由质检门控决定，失败会自动重试或降级返回可用结果。</li>
-              <li>下一步：进入「工作室」切换姿态并试穿衣橱单品。</li>
+              <li>下一步：到「商品库」上传新品，再到「批量出图」一键产出整批上身图。</li>
             </ul>
           </div>
         </div>

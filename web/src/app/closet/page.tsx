@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { absUrl, createJob, uploadAsset, waitForImageJob } from "@/lib/api";
 import { createClosetItem, deleteClosetItem, toggleFavoriteApi } from "@/lib/assets";
 import { ClosetCategory, ClosetItem, useAppStore } from "@/stores/useAppStore";
+import { UploadField } from "@/components/UploadField";
 
 const categories: Array<{ id: ClosetCategory; label: string }> = [
   { id: "top", label: "上衣" },
@@ -110,24 +111,23 @@ export default function ClosetPage() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
       <div className="rounded-3xl border border-zinc-200/70 bg-white p-6 md:p-8">
-        <div className="text-xs text-zinc-500">个人衣橱</div>
-        <div className="mt-1 text-xl font-semibold tracking-tight">上传服装单品到衣橱</div>
+        <div className="text-xs text-zinc-500">商品库</div>
+        <div className="mt-1 text-xl font-semibold tracking-tight">上传新品到商品库</div>
         <div className="mt-2 text-sm text-zinc-600">
-          单张图片 ≤8MB。可让系统<strong>智能提取</strong>成干净单品图，或当图片本身就是干净商品图时<strong>直接上传</strong>。处理完成后在「工作室」一键试穿。
+          单张图片 ≤8MB。可让系统<strong>智能提取</strong>成干净单品图，或当图片本身就是干净商品图时<strong>直接上传</strong>。处理完成后到「批量出图」一键产出整批上身图。
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="md:col-span-2 rounded-3xl border border-zinc-200/70 bg-zinc-50 p-5">
             <div className="text-sm font-medium">选择图片</div>
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="mt-4 block w-full text-sm file:mr-4 file:rounded-full file:border-0 file:bg-zinc-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-zinc-50 hover:file:bg-zinc-800"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              disabled={busy}
-            />
-            <div className="mt-4 text-xs text-zinc-600">
-              {file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)}MB` : "支持模特图或白底商品图；选好分类与处理方式后上传"}
+            <div className="mt-4">
+              <UploadField
+                file={file}
+                onSelect={setFile}
+                maxBytes={8 * 1024 * 1024}
+                disabled={busy}
+                hint="支持模特图或白底商品图；选好分类与处理方式后上传，≤8MB"
+              />
             </div>
           </div>
           <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
@@ -235,7 +235,7 @@ export default function ClosetPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {closet.length === 0 ? (
           <div className="md:col-span-3 rounded-3xl border border-zinc-200/70 bg-white p-10 text-center text-sm text-zinc-500">
-            暂无单品。先上传一件衣服开始试穿。
+            商品库还是空的。上传新品后即可到「批量出图」一键产出上身图。
           </div>
         ) : (
           closet.map((item) => (

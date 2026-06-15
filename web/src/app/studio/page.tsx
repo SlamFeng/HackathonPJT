@@ -183,10 +183,10 @@ export default function StudioPage() {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div className="rounded-3xl border border-zinc-200/70 bg-white p-6 md:p-8">
-        <div className="text-xs text-zinc-500">姿态与试穿</div>
-        <div className="mt-1 text-xl font-semibold tracking-tight">选择姿态 → 选择单品 → 一键试穿</div>
+        <div className="text-xs text-zinc-500">单张精修</div>
+        <div className="mt-1 text-xl font-semibold tracking-tight">选择姿态 → 选择商品 → 生成上身图</div>
         <div className="mt-2 text-sm text-zinc-600">
-          数字人生成后会自动预生成所有姿态；已生成的姿态和试穿图会被缓存，切换回来可直接查看。
+          用于单张精修/调试；批量产出请用「批量出图」。模特创建后会自动预生成各姿态，已生成的姿态与上身图会被缓存，切换回来可直接查看。
         </div>
       </div>
 
@@ -198,59 +198,86 @@ export default function StudioPage() {
         <div className="rounded-3xl border border-zinc-200/70 bg-white p-5 lg:col-span-3">
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm font-medium">姿态库</div>
-            <button
-              className={[
-                "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                canRegeneratePose ? "bg-zinc-950 text-zinc-50 hover:bg-zinc-800" : "bg-zinc-200 text-zinc-500",
-              ].join(" ")}
-              onClick={() => regeneratePose(poseId)}
-              disabled={!canRegeneratePose}
-            >
-              {poseRunning ? "生成中" : "重新生成"}
-            </button>
+            <div className="text-[10px] text-zinc-400">点选姿态 · 悬停可重生</div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             {POSES.map((p) => {
               const active = poseId === p.id;
               const state = avatar.poseRenders[p.id];
+              const ready = state?.status === "succeeded" && !!state.imageUrl;
+              const running = state?.status === "running";
+              const failed = state?.status === "failed";
               return (
-                <button
+                <div
                   key={p.id}
-                  className={[
-                    "group relative overflow-hidden rounded-2xl border px-3 py-3 text-left transition-colors",
-                    active ? "border-zinc-900 bg-zinc-900 text-zinc-50" : "border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50",
-                  ].join(" ")}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => {
                     setError(null);
                     setPoseId(p.id);
                   }}
+                  className={[
+                    "group relative cursor-pointer overflow-hidden rounded-2xl border-2 text-left transition-colors",
+                    active ? "border-zinc-900" : "border-transparent hover:border-zinc-300",
+                  ].join(" ")}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-medium">{p.label}</div>
-                    <div className={["text-[10px]", active ? "text-zinc-300" : "text-zinc-500"].join(" ")}>
-                      {poseStatusLabel(state?.status)}
-                    </div>
-                  </div>
-                  <div
-                    className={[
-                      "mt-2 h-10 overflow-hidden rounded-xl",
-                      active ? "bg-zinc-800" : "bg-zinc-100 group-hover:bg-zinc-200",
-                    ].join(" ")}
-                  >
-                    {state?.status === "running" ? (
-                      <div className="h-full bg-zinc-400 transition-all" style={{ width: `${Math.round(state.progress * 100)}%` }} />
+                  {/* 缩略图区：已生成显示姿态图，否则显示占位/状态，不再是空灰块 */}
+                  <div className="relative aspect-[3/4] bg-zinc-100">
+                    {ready ? (
+                      <img src={state!.imageUrl} alt={p.label} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-zinc-400">
+                        {running ? (
+                          <div className="h-1.5 w-12 overflow-hidden rounded-full bg-zinc-200">
+                            <div className="h-full w-1/3 animate-[poseind_1.2s_ease-in-out_infinite] rounded-full bg-zinc-500" />
+                          </div>
+                        ) : (
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                            <circle cx="12" cy="7" r="3" />
+                            <path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2" strokeLinecap="round" />
+                          </svg>
+                        )}
+                        <span className="text-[10px]">{poseStatusLabel(state?.status)}</span>
+                      </div>
+                    )}
+                    {/* 悬停重生按钮（仅在有模特时可用） */}
+                    {canRegeneratePose ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          regeneratePose(p.id);
+                        }}
+                        disabled={running}
+                        className="absolute right-1 top-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white opacity-0 transition-opacity hover:bg-black/75 group-hover:opacity-100 disabled:opacity-40"
+                      >
+                        {running ? "生成中" : ready || failed ? "重生" : "生成"}
+                      </button>
                     ) : null}
                   </div>
-                </button>
+                  <div className="flex items-center justify-between gap-1 px-2 py-1.5">
+                    <span className={["text-xs font-medium", active ? "text-zinc-900" : "text-zinc-700"].join(" ")}>{p.label}</span>
+                    {active ? <span className="h-1.5 w-1.5 rounded-full bg-zinc-900" /> : null}
+                  </div>
+                </div>
               );
             })}
           </div>
+          <style jsx>{`
+            @keyframes poseind {
+              0% {
+                transform: translateX(-120%);
+              }
+              100% {
+                transform: translateX(420%);
+              }
+            }
+          `}</style>
 
           <div className="mt-6">
-            <div className="text-sm font-medium">试穿单品</div>
+            <div className="text-sm font-medium">选择商品</div>
             <div className="mt-3 space-y-2">
               {closet.length === 0 ? (
-                <div className="rounded-2xl bg-zinc-50 p-4 text-xs text-zinc-500">衣橱为空，先去上传单品</div>
+                <div className="rounded-2xl bg-zinc-50 p-4 text-xs text-zinc-500">商品库为空，先到「商品库」上传新品</div>
               ) : (
                 closet.slice(0, 6).map((item) => {
                   const active = garment?.id === item.id;
@@ -289,10 +316,10 @@ export default function StudioPage() {
               disabled={!canTryOn}
             >
               {tryOnRunning
-                ? `试穿中... ${Math.round((currentTryOn?.progress ?? 0) * 100)}%`
+                ? "生成中…"
                 : currentTryOn?.status === "succeeded"
-                  ? "重新试穿"
-                  : "一键试穿"}
+                  ? "重新生成"
+                  : "生成上身图"}
             </button>
           </div>
         </div>
@@ -306,7 +333,7 @@ export default function StudioPage() {
             emptyText={avatar.avatarImageUrl ? "等待当前姿态生成完成" : "请先生成数字人"}
           />
           <PreviewCard
-            title="试穿预览"
+            title="上身图预览"
             subtitle={tryOnSubtitle(currentTryOn)}
             imageUrl={currentTryOn?.status === "succeeded" ? currentTryOn.imageUrl : null}
             overlayImageUrl={currentTryOn?.overlayGarmentUrl}

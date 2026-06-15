@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { absUrl, createJobsBatch, exportJobsZip, waitForImageJob, type BatchJobItem } from "@/lib/api";
 import { createTryon } from "@/lib/assets";
 import { switchToAvatar } from "@/lib/useHydrateAssets";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import {
   ClosetCategory,
   ClosetItem,
@@ -246,6 +247,7 @@ export default function WorkbenchPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+      <OnboardingChecklist />
       <section className="rounded-3xl border border-zinc-200/70 bg-white p-6 md:p-8">
         <div className="text-xs text-zinc-500">批量出图工作台</div>
         <h1 className="mt-1 text-xl font-semibold tracking-tight md:text-2xl">
@@ -264,12 +266,12 @@ export default function WorkbenchPage() {
       {/* 前置条件守卫 */}
       {!avatar.avatarImageUrl ? (
         <Guard
-          text="还没有模特（数字人）。先去生成一个，系统会自动预生成各个姿态。"
+          text="还没有模特。先去创建一个，系统会自动预生成各个姿态。"
           href="/avatar"
-          cta="去生成数字人"
+          cta="去创建模特"
         />
       ) : closet.length === 0 ? (
-        <Guard text="衣橱是空的。先上传一批新品单品，再回来批量出图。" href="/closet" cta="去上传单品" />
+        <Guard text="商品库是空的。先上传一批新品，再回来批量出图。" href="/closet" cta="去上传新品" />
       ) : (
         <>
           {/* Step 1：选模特 */}

@@ -9,15 +9,19 @@ import { getMyCredits } from "@/lib/credits";
 import { useAuth } from "@/lib/auth-context";
 import { useHydrateAssets } from "@/lib/useHydrateAssets";
 
+// 主线导航：按卖家的活儿顺序排列（批量出图 → 模特 → 商品 → 交付）
 const nav = [
-  { href: "/", label: "门户" },
-  { href: "/workbench", label: "工作台" },
-  { href: "/avatar", label: "数字人" },
-  { href: "/studio", label: "工作室" },
-  { href: "/closet", label: "衣橱" },
-  { href: "/history", label: "历史" },
-  { href: "/orders", label: "订单" },
+  { href: "/workbench", label: "批量出图" },
+  { href: "/avatar", label: "模特库" },
+  { href: "/closet", label: "商品库" },
+  { href: "/history", label: "出图记录" },
+];
+
+// 次要功能：精修/调试与 toC 残留，折叠在「更多」下，不进主线
+const secondaryNav = [
+  { href: "/studio", label: "单张精修" },
   { href: "/stylist", label: "穿搭顾问" },
+  { href: "/orders", label: "订单" },
 ];
 
 // 仅管理员可见的导航项
@@ -26,7 +30,7 @@ const adminNav = [
   { href: "/admin/jobs", label: "任务监控" },
   { href: "/admin/usage", label: "用量统计" },
   { href: "/admin/settings", label: "系统设置" },
-  { href: "/debug/generation-logs", label: "生图日志" },
+  { href: "/debug/generation-logs", label: "生成明细" },
 ];
 
 // 无需登录、且自带整屏布局的路由：门户与登录/注册页
@@ -107,6 +111,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }, [isPublic, loading, me, router]);
 
+  // 已登录用户访问营销门户「/」时，直接进入工作流主页（批量出图）
+  useEffect(() => {
+    if (pathname === "/" && !loading && me) {
+      router.replace("/workbench");
+    }
+  }, [pathname, loading, me, router]);
+
   // 门户/登录/注册：不套外壳，直接渲染各自整屏布局
   if (isPublic) {
     return <div className="min-h-full">{children}</div>;
@@ -126,8 +137,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     router.replace("/login");
   }
 
-  const navItems = me.role === "admin" ? [...nav, ...adminNav] : nav;
   const isAdmin = me.role === "admin";
+  // 分组导航：主线 / 更多 / 管理（仅管理员）
+  const navGroups: Array<{ title: string | null; items: Array<{ href: string; label: string }> }> = [
+    { title: null, items: nav },
+    { title: "更多", items: secondaryNav },
+    ...(isAdmin ? [{ title: "管理", items: adminNav }] : []),
+  ];
 
   return (
     <div className="flex min-h-full flex-1 bg-zinc-50 text-zinc-950">
@@ -137,21 +153,30 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="text-[11px] text-zinc-500">nanobanana-first</div>
         </div>
         <nav className="mt-6 flex flex-col gap-1">
-          {navItems.map((item) => {
-            const active = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={[
-                  "rounded-xl px-3 py-2 text-sm transition-colors",
-                  active ? "bg-zinc-900 text-zinc-50" : "text-zinc-700 hover:bg-zinc-100",
-                ].join(" ")}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
+          {navGroups.map((group) => (
+            <div key={group.title ?? "main"} className={group.title ? "mt-4" : ""}>
+              {group.title ? (
+                <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+                  {group.title}
+                </div>
+              ) : null}
+              {group.items.map((item) => {
+                const active = pathname === item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={[
+                      "block rounded-xl px-3 py-2 text-sm transition-colors",
+                      active ? "bg-zinc-900 text-zinc-50" : "text-zinc-700 hover:bg-zinc-100",
+                    ].join(" ")}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
         <div className="mt-auto pt-6 text-xs text-zinc-500">
           UI 极简插画风，出图写实身份保持
@@ -199,22 +224,31 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
         {mobileNavOpen ? (
           <nav className="flex flex-col gap-1 border-b border-zinc-200/70 bg-white px-3 py-3 md:hidden">
-            {navItems.map((item) => {
-              const active = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileNavOpen(false)}
-                  className={[
-                    "rounded-xl px-3 py-2 text-sm transition-colors",
-                    active ? "bg-zinc-900 text-zinc-50" : "text-zinc-700 hover:bg-zinc-100",
-                  ].join(" ")}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
+            {navGroups.map((group) => (
+              <div key={group.title ?? "main"} className={group.title ? "mt-3" : ""}>
+                {group.title ? (
+                  <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+                    {group.title}
+                  </div>
+                ) : null}
+                {group.items.map((item) => {
+                  const active = pathname === item.href;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMobileNavOpen(false)}
+                      className={[
+                        "block rounded-xl px-3 py-2 text-sm transition-colors",
+                        active ? "bg-zinc-900 text-zinc-50" : "text-zinc-700 hover:bg-zinc-100",
+                      ].join(" ")}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
         ) : null}
         {hasApiKey === false ? (
