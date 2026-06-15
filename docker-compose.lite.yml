@@ -1,0 +1,80 @@
+# 最小成本部署拓扑（lite）：api(含进程内 worker + SQLite) + web，可选 caddy(HTTPS)。
+#
+# 与 docker-compose.yml 的区别（为把云成本压到底）：
+#   - 砍掉 Postgres 容器：用 SQLite（DATABASE_URL=sqlite+aiosqlite），落在 api_data 卷。
+#   - 砍掉独立 worker 容器：WORKER_IN_PROCESS=true，生成任务在 api 进程内跑。
+#   => 容器从 5 个降到 2~3 个，1~2GB 的小机器即可承载，适合 5~10 卖家的验证 beta / demo。
+#
+# 一键启动（仅 api+web，本机自测）：
+#   docker compose -f docker-compose.lite.yml up --build -d
+# 带 HTTPS（公网，需先配好域名 + Caddyfile）：
+#   docker compose -f docker-compose.lite.yml --profile https up --build -d
+#
+# 注意：web 的 NEXT_PUBLIC_API_BASE_URL 在「构建期」内联，改公网域名后必须重新 build web。
+#       小内存机器构建 Next.js 易 OOM，建议本地/CI 构建镜像后推送，详见 docs/deploy-aws-lite.md。
+
+services:
+  api:
+    build: ./api
+    env_file:
+      - path: ./api/.env
+        required: false
+    environment:
+      # 用 SQLite，库文件落在持久卷 api_data，容器重启不丢
+      DATABASE_URL: sqlite+aiosqlite:////app/data/local.db
+      SESSION_SECRET: ${SESSION_SECRET:-dev-insecure-change-me}
+      # 公网 HTTPS 下必须 true，Cookie 才会下发
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # 进程内 worker：生成任务在 api 里跑，无需独立 worker 容器
+      WORKER_IN_PROCESS: "true"
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      # 首次启动自动创建管理员（生产请改强密码）
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@ailurus.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
+    ports:
+      - "8000:8000"
+    volumes:
+      - api_storage:/app/storage   # 生成的图片
+      - api_data:/app/data         # SQLite 库 + 日志
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 可选：公网 HTTPS 反代（自动 Let's Encrypt）。仅在 --profile https 时启动。
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+    restart: unless-stopped
+
+volumes:
+  api_storage:
+  api_data:
+  caddy_data:
+  caddy_config:
