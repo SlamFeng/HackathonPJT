@@ -1,0 +1,57 @@
+# 拆分部署的「后端」拓扑：前端放 Vercel，这台机器只跑 api(含进程内 worker + SQLite) + caddy(HTTPS)。
+# 相比 docker-compose.lite.yml 再砍掉 web 容器 —— Next.js 构建与运行都交给 Vercel，
+# 这台 free-tier 小机器不再碰前端，OOM 风险基本消除，1GB 内存无需 swap 即可稳跑。
+#
+# 启动（公网，需先配好域名 + Caddyfile.api + 根目录 .env）：
+#   docker compose -f docker-compose.lite-api.yml up --build -d
+#
+# 关键：CORS_ORIGINS 必须填你的 Vercel 前端域名；COOKIE_SAMESITE=none + 自动 Secure 才能跨站下发登录态。
+
+services:
+  api:
+    build: ./api
+    env_file:
+      - path: ./api/.env
+        required: false
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:////app/data/local.db
+      SESSION_SECRET: ${SESSION_SECRET:-dev-insecure-change-me}
+      # 跨站部署：前端(Vercel) 与后端(本机域名) 不同站点
+      COOKIE_SECURE: "true"                       # HTTPS 必须；SameSite=none 也强制要求
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-none}   # 跨站下发 Cookie 必须 none
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}  # 改成你的 https://xxx.vercel.app
+      WORKER_IN_PROCESS: "true"
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@ailurus.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
+    expose:
+      - "8000"          # 仅容器网络内暴露；公网只走 caddy(443)
+    volumes:
+      - api_storage:/app/storage
+      - api_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.api:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  api_storage:
+  api_data:
+  caddy_data:
+  caddy_config:
