@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useT } from "@/i18n";
+
 type Props = {
   /** 当前选中的文件（受控）。父组件持有，便于上传后清空。 */
   file: File | null;
@@ -41,6 +43,7 @@ export function UploadField({
   recommendH,
   hint,
 }: Props) {
+  const t = useT();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -71,12 +74,12 @@ export function UploadField({
       return;
     }
     if (!exts.includes(extOf(f.name))) {
-      setError(`仅支持 ${exts.map((e) => e.slice(1)).join("/")} 格式`);
+      setError(t("up.errFormat", { exts: exts.map((e) => e.slice(1)).join("/") }));
       onSelect(null);
       return;
     }
     if (f.size > maxBytes) {
-      setError(`文件需 ≤${Math.round(maxBytes / 1024 / 1024)}MB（当前 ${(f.size / 1024 / 1024).toFixed(2)}MB）`);
+      setError(t("up.errSize", { mb: Math.round(maxBytes / 1024 / 1024), cur: (f.size / 1024 / 1024).toFixed(2) }));
       onSelect(null);
       return;
     }
@@ -114,8 +117,8 @@ export function UploadField({
             <path d="M12 16V4m0 0L8 8m4-4l4 4" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" strokeLinecap="round" />
           </svg>
-          <div className="text-sm font-medium text-zinc-700">点击选择，或把图片拖到这里</div>
-          <div className="text-xs text-zinc-500">{hint ?? `支持 ${exts.map((e) => e.slice(1)).join("/")}，≤${Math.round(maxBytes / 1024 / 1024)}MB`}</div>
+          <div className="text-sm font-medium text-zinc-700">{t("up.dropzone")}</div>
+          <div className="text-xs text-zinc-500">{hint ?? t("up.defaultHint", { exts: exts.map((e) => e.slice(1)).join("/"), mb: Math.round(maxBytes / 1024 / 1024) })}</div>
         </button>
       ) : (
         <div className="flex items-start gap-4 rounded-2xl border border-zinc-200 bg-white p-3">
@@ -132,7 +135,7 @@ export function UploadField({
             </div>
             {belowRecommend ? (
               <div className="mt-1 text-xs text-amber-600">
-                建议 ≥{recommendW}×{recommendH}，当前偏小可能影响效果
+                {t("up.belowRec", { w: recommendW ?? "", h: recommendH ?? "" })}
               </div>
             ) : null}
             <div className="mt-3 flex gap-2">
@@ -142,7 +145,7 @@ export function UploadField({
                 onClick={() => inputRef.current?.click()}
                 className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
               >
-                重新选择
+                {t("up.reselect")}
               </button>
               <button
                 type="button"
@@ -150,7 +153,7 @@ export function UploadField({
                 onClick={() => validateAndSelect(null)}
                 className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-500 hover:border-red-200 hover:text-red-600 disabled:opacity-50"
               >
-                移除
+                {t("up.remove")}
               </button>
             </div>
           </div>

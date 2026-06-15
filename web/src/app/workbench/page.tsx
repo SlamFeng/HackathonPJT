@@ -7,6 +7,7 @@ import { absUrl, createJobsBatch, exportJobsZip, waitForImageJob, type BatchJobI
 import { createTryon } from "@/lib/assets";
 import { switchToAvatar } from "@/lib/useHydrateAssets";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
+import { useT } from "@/i18n";
 import {
   ClosetCategory,
   ClosetItem,
@@ -14,18 +15,6 @@ import {
   PoseId,
   useAppStore,
 } from "@/stores/useAppStore";
-
-const CATEGORY_LABEL: Record<ClosetCategory, string> = {
-  top: "上衣",
-  pants: "裤子",
-  skirt: "裙子",
-  dress: "连衣裙",
-  outerwear: "外套",
-  suit: "套装",
-  underwear: "贴身衣物",
-  shoes: "鞋子",
-  accessory: "配饰",
-};
 
 // 单次 vton 试穿的额度成本（与后端 credits COSTS 保持一致）
 const TRYON_COST = 2;
@@ -38,13 +27,14 @@ function comboKey(poseId: PoseId, garmentId: string) {
 
 // worker 并发≈2，单张约 10–30s；据此给出粗略时长区间，让卖家心里有数。
 const WORKER_CONCURRENCY = 2;
-function fmtDuration(sec: number) {
-  if (sec < 60) return `${sec} 秒`;
-  return `${Math.max(1, Math.round(sec / 60))} 分钟`;
+type TFn = (key: string, vars?: Record<string, string | number>) => string;
+function fmtDuration(sec: number, t: TFn) {
+  if (sec < 60) return t("dur.sec", { n: sec });
+  return t("dur.min", { n: Math.max(1, Math.round(sec / 60)) });
 }
-function estTimeRange(n: number) {
+function estTimeRange(n: number, t: TFn) {
   const waves = Math.ceil(n / WORKER_CONCURRENCY);
-  return `${fmtDuration(waves * 10)}–${fmtDuration(waves * 30)}`;
+  return `${fmtDuration(waves * 10, t)}–${fmtDuration(waves * 30, t)}`;
 }
 
 type CellStatus = "running" | "succeeded" | "failed";
@@ -63,6 +53,7 @@ export default function WorkbenchPage() {
   const avatars = useAppStore((s) => s.avatars);
   const closet = useAppStore((s) => s.closet);
   const setTryOnRender = useAppStore((s) => s.setTryOnRender);
+  const t = useT();
 
   const [selectedGarments, setSelectedGarments] = useState<Set<string>>(new Set());
   const [selectedPoses, setSelectedPoses] = useState<Set<PoseId>>(new Set());
@@ -143,7 +134,7 @@ export default function WorkbenchPage() {
       setSelectedPoses(new Set());
       setCells({});
     } catch (e) {
-      setError(e instanceof Error ? e.message : "切换模特失败");
+      setError(e instanceof Error ? e.message : t("wb.err.switch"));
     }
   }
 
@@ -151,15 +142,15 @@ export default function WorkbenchPage() {
   function handleRunClick() {
     setError(null);
     if (!avatar.avatarId || !avatar.avatarImageUrl) {
-      setError("请先到「模特库」创建一个模特");
+      setError(t("wb.err.noModel"));
       return;
     }
     if (toGenerate.length === 0) {
-      setError("没有需要生成的组合：请选择商品与已就绪的姿态");
+      setError(t("wb.err.noCombo"));
       return;
     }
     if (overLimit) {
-      setError(`单次最多 ${BATCH_LIMIT} 张，请减少选择（当前 ${toGenerate.length} 张）`);
+      setError(t("wb.overLimit", { n: BATCH_LIMIT }));
       return;
     }
     setConfirming(true);
@@ -256,7 +247,7 @@ export default function WorkbenchPage() {
         }
         return next;
       });
-      setError(e instanceof Error ? e.message : "批量生成失败");
+      setError(e instanceof Error ? e.message : t("wb.err.run"));
     } finally {
       setRunning(false);
     }
@@ -280,7 +271,7 @@ export default function WorkbenchPage() {
     try {
       await exportJobsZip(succeededCells.map((c) => c.jobId!));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "打包下载失败");
+      setError(e instanceof Error ? e.message : t("wb.err.zip"));
     } finally {
       setZipBusy(false);
     }
@@ -294,14 +285,9 @@ export default function WorkbenchPage() {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <OnboardingChecklist />
       <section className="rounded-3xl border border-zinc-200/70 bg-white p-6 md:p-8">
-        <div className="text-xs text-zinc-500">批量出图工作台</div>
-        <h1 className="mt-1 text-xl font-semibold tracking-tight md:text-2xl">
-          新品批量试穿出图 · 替代模特摄影
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
-          选好模特、姿态与一批新品单品，一键生成全部「上身图」，完成后打包下载。
-          每张约 {TRYON_COST} 额度，按需增量出图（已生成的可自动跳过）。
-        </p>
+        <div className="text-xs text-zinc-500">{t("wb.kicker")}</div>
+        <h1 className="mt-1 text-xl font-semibold tracking-tight md:text-2xl">{t("wb.title")}</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">{t("wb.desc", { n: TRYON_COST })}</p>
       </section>
 
       {error ? (
@@ -310,25 +296,21 @@ export default function WorkbenchPage() {
 
       {/* 前置条件守卫 */}
       {!avatar.avatarImageUrl ? (
-        <Guard
-          text="还没有模特。先去创建一个，系统会自动预生成各个姿态。"
-          href="/avatar"
-          cta="去创建模特"
-        />
+        <Guard text={t("wb.guard.noModel")} href="/avatar" cta={t("wb.guard.noModelCta")} />
       ) : closet.length === 0 ? (
-        <Guard text="商品库是空的。先上传一批新品，再回来批量出图。" href="/closet" cta="去上传新品" />
+        <Guard text={t("wb.guard.noProduct")} href="/closet" cta={t("wb.guard.noProductCta")} />
       ) : (
         <>
           {/* 姿态准备进度：模特创建后姿态在后台预生成，这里显性化，避免「未就绪」让人困惑 */}
           {poseRunningCount > 0 ? (
             <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
-              正在准备模特姿态 {readyPoses.length}/{POSES.length}（剩余 {poseRunningCount} 个生成中，完成后即可用于出图）。
+              {t("wb.posePrep", { ready: readyPoses.length, total: POSES.length, running: poseRunningCount })}
             </div>
           ) : null}
 
           {/* Step 1：选模特 */}
-          <Card step="1" title="选择模特" hint={`当前：${avatar.avatarId ? "已选" : "未选"}`}>
+          <Card step="1" title={t("wb.step1")} hint={t("wb.step1.hint", { state: avatar.avatarId ? t("wb.selected") : t("wb.unselected") })}>
             <div className="flex flex-wrap gap-3">
               {avatars.map((a) => {
                 const active = a.id === avatar.avatarId;
@@ -341,7 +323,7 @@ export default function WorkbenchPage() {
                       "block h-28 w-20 overflow-hidden rounded-2xl border-2 transition-colors disabled:opacity-50",
                       active ? "border-zinc-900" : "border-transparent hover:border-zinc-300",
                     ].join(" ")}
-                    title={active ? "当前模特" : "点击切换"}
+                    title={active ? t("wb.modelTitleActive") : t("wb.modelTitleSwitch")}
                   >
                     <img src={a.imageUrl} alt="model" className="h-full w-full bg-zinc-100 object-cover" />
                   </button>
@@ -353,23 +335,23 @@ export default function WorkbenchPage() {
           {/* Step 2：选姿态 */}
           <Card
             step="2"
-            title="选择姿态"
-            hint={`已就绪 ${readyPoses.length}/${POSES.length}`}
+            title={t("wb.step2")}
+            hint={t("wb.poseReady", { ready: readyPoses.length, total: POSES.length })}
             action={
               readyPoses.length > 0 ? (
                 <button onClick={selectAllReadyPoses} disabled={running} className="text-xs text-zinc-600 underline">
-                  全选就绪姿态
+                  {t("wb.selectAllReadyPoses")}
                 </button>
               ) : null
             }
           >
             {readyPoses.length === 0 ? (
               <div className="rounded-2xl bg-amber-50 p-4 text-xs text-amber-800">
-                当前模特还没有任何已生成的姿态图。姿态会在创建模特后自动预生成，或到
+                {t("wb.noReadyPose1")}
                 <Link href="/studio" className="mx-1 font-medium underline">
-                  单张精修
+                  {t("nav.studio")}
                 </Link>
-                手动生成后再回来。
+                {t("wb.noReadyPose2")}
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">
@@ -389,10 +371,10 @@ export default function WorkbenchPage() {
                             ? "bg-zinc-950 text-zinc-50"
                             : "border border-zinc-200 text-zinc-700 hover:bg-zinc-50",
                       ].join(" ")}
-                      title={ready ? "" : "该姿态尚未生成"}
+                      title={ready ? "" : t("wb.poseNotReadyTitle")}
                     >
-                      {p.label}
-                      {!ready ? " · 未就绪" : ""}
+                      {t(`pose.${p.id}`)}
+                      {!ready ? t("wb.notReady") : ""}
                     </button>
                   );
                 })}
@@ -403,15 +385,15 @@ export default function WorkbenchPage() {
           {/* Step 3：选单品 */}
           <Card
             step="3"
-            title="选择单品（新品）"
-            hint={`已选 ${selectedGarments.size}/${closet.length}`}
+            title={t("wb.step3")}
+            hint={t("wb.step3.hint", { n: selectedGarments.size, total: closet.length })}
             action={
               <div className="flex gap-3 text-xs text-zinc-600">
                 <button onClick={selectAllGarments} disabled={running} className="underline">
-                  全选
+                  {t("act.selectAll")}
                 </button>
                 <button onClick={clearGarments} disabled={running} className="underline">
-                  清空
+                  {t("act.clear")}
                 </button>
               </div>
             }
@@ -431,7 +413,7 @@ export default function WorkbenchPage() {
                   >
                     <img src={item.imageUrl} alt="garment" className="h-24 w-full rounded-xl bg-zinc-50 object-contain" />
                     <div className="mt-1 truncate px-1 text-[11px] text-zinc-500">
-                      {CATEGORY_LABEL[item.category] ?? item.category}
+                      {t(`cat.${item.category}`)}
                     </div>
                     <span
                       className={[
@@ -448,17 +430,19 @@ export default function WorkbenchPage() {
           </Card>
 
           {/* Step 4：开始 */}
-          <Card step="4" title="开始批量生成">
+          <Card step="4" title={t("wb.step4")}>
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="text-sm text-zinc-600">
                 <div>
-                  共 <strong className="text-zinc-900">{combos.length}</strong> 个组合
-                  {skipExisting && combos.length !== toGenerate.length ? (
-                    <span>（跳过 {combos.length - toGenerate.length} 个已生成）</span>
-                  ) : null}
-                  ，待生成 <strong className="text-zinc-900">{toGenerate.length}</strong> 张，预计耗时{" "}
-                  <strong className="text-zinc-900">{estTimeRange(toGenerate.length)}</strong>，消耗{" "}
-                  <strong className="text-zinc-900">{estCost}</strong> 额度。
+                  {t("wb.summary.combos", { n: combos.length })}
+                  {skipExisting && combos.length !== toGenerate.length
+                    ? t("wb.summary.skipped", { n: combos.length - toGenerate.length })
+                    : null}
+                  {t("wb.summary.rest", {
+                    n: toGenerate.length,
+                    time: estTimeRange(toGenerate.length, t),
+                    cost: estCost,
+                  })}
                 </div>
                 <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-zinc-600">
                   <input
@@ -467,10 +451,10 @@ export default function WorkbenchPage() {
                     onChange={(e) => setSkipExisting(e.target.checked)}
                     disabled={running}
                   />
-                  跳过已生成的组合（增量出图）
+                  {t("wb.skipExisting")}
                 </label>
                 {overLimit ? (
-                  <div className="mt-1 text-xs text-red-600">单次最多 {BATCH_LIMIT} 张，请减少选择。</div>
+                  <div className="mt-1 text-xs text-red-600">{t("wb.overLimit", { n: BATCH_LIMIT })}</div>
                 ) : null}
               </div>
               <button
@@ -483,7 +467,9 @@ export default function WorkbenchPage() {
                     : "bg-zinc-950 text-zinc-50 hover:bg-zinc-800",
                 ].join(" ")}
               >
-                {running ? `生成中… ${doneCount + failCount}/${cellList.length}` : `批量生成 ${toGenerate.length} 张`}
+                {running
+                  ? t("wb.running", { done: doneCount + failCount, total: cellList.length })
+                  : t("wb.runBtn", { n: toGenerate.length })}
               </button>
             </div>
 
@@ -491,21 +477,20 @@ export default function WorkbenchPage() {
             {confirming ? (
               <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-zinc-900 bg-zinc-50 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-zinc-700">
-                  将生成 <strong>{toGenerate.length}</strong> 张 · 预计耗时{" "}
-                  <strong>{estTimeRange(toGenerate.length)}</strong> · 消耗 <strong>{estCost}</strong> 额度。确认开始？
+                  {t("wb.confirm", { n: toGenerate.length, time: estTimeRange(toGenerate.length, t), cost: estCost })}
                 </div>
                 <div className="flex shrink-0 gap-2">
                   <button
                     onClick={() => setConfirming(false)}
                     className="rounded-full border border-zinc-300 px-4 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
                   >
-                    取消
+                    {t("common.cancel")}
                   </button>
                   <button
                     onClick={handleConfirmRun}
                     className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-medium text-zinc-50 hover:bg-zinc-800"
                   >
-                    确认生成
+                    {t("wb.confirmRun")}
                   </button>
                 </div>
               </div>
@@ -516,8 +501,8 @@ export default function WorkbenchPage() {
           {cellList.length > 0 ? (
             <Card
               step="✓"
-              title="生成结果"
-              hint={`成功 ${doneCount} · 失败 ${failCount} · 共 ${cellList.length}`}
+              title={t("wb.result")}
+              hint={t("wb.result.hint", { ok: doneCount, fail: failCount, total: cellList.length })}
               action={
                 <div className="flex items-center gap-2">
                   {failCount > 0 ? (
@@ -526,7 +511,7 @@ export default function WorkbenchPage() {
                       disabled={running}
                       className="rounded-full border border-zinc-300 px-4 py-2 text-xs font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
                     >
-                      重试失败 {failCount} 项
+                      {t("wb.retryFailed", { n: failCount })}
                     </button>
                   ) : null}
                   {succeededCells.length > 0 ? (
@@ -535,7 +520,7 @@ export default function WorkbenchPage() {
                       disabled={zipBusy}
                       className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-medium text-zinc-50 hover:bg-zinc-800 disabled:opacity-50"
                     >
-                      {zipBusy ? "打包中…" : `打包下载 ${succeededCells.length} 张`}
+                      {zipBusy ? t("wb.packing") : t("wb.downloadN", { n: succeededCells.length })}
                     </button>
                   ) : null}
                 </div>
@@ -553,13 +538,13 @@ export default function WorkbenchPage() {
                             <div className="h-2 w-16 animate-pulse rounded-full bg-zinc-300" />
                           ) : (
                             <>
-                              <div className="text-center text-[11px] text-red-500">{c.error ?? "失败"}</div>
+                              <div className="text-center text-[11px] text-red-500">{c.error ?? t("wb.cell.failed")}</div>
                               <button
                                 onClick={() => retryCell(c)}
                                 disabled={running}
                                 className="rounded-full border border-zinc-300 px-3 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
                               >
-                                重试
+                                {t("common.retry")}
                               </button>
                             </>
                           )}
@@ -575,14 +560,12 @@ export default function WorkbenchPage() {
                               : "bg-amber-100 text-amber-700",
                         ].join(" ")}
                       >
-                        {c.status === "succeeded" ? "完成" : c.status === "failed" ? "失败" : "生成中"}
+                        {c.status === "succeeded" ? t("wb.cell.done") : c.status === "failed" ? t("wb.cell.failed") : t("wb.cell.running")}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 px-2 py-1.5">
                       <img src={c.garment.imageUrl} alt="g" className="h-6 w-6 rounded bg-zinc-50 object-contain" />
-                      <div className="truncate text-[11px] text-zinc-500">
-                        {POSES.find((p) => p.id === c.poseId)?.label ?? c.poseId}
-                      </div>
+                      <div className="truncate text-[11px] text-zinc-500">{t(`pose.${c.poseId}`)}</div>
                     </div>
                   </div>
                 ))}

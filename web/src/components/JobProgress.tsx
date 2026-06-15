@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 
+import { useT } from "@/i18n";
+
 export type JobPhase = "queued" | "running" | "done" | "failed";
 
-const PHASES: Array<{ key: JobPhase; label: string }> = [
-  { key: "queued", label: "排队中" },
-  { key: "running", label: "生成中" },
-  { key: "done", label: "完成" },
+const PHASE_KEYS: Array<{ key: JobPhase; tk: string }> = [
+  { key: "queued", tk: "jp.queued" },
+  { key: "running", tk: "jp.running" },
+  { key: "done", tk: "jp.done" },
 ];
 
 function phaseIndex(phase: JobPhase) {
@@ -35,10 +37,11 @@ export function JobProgress({
   phase,
   label,
   startedAtMs,
-  expectedText = "通常 10–30 秒",
+  expectedText,
   error,
   onRetry,
 }: Props) {
+  const t = useT();
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (phase === "done" || phase === "failed" || !startedAtMs) return;
@@ -51,14 +54,14 @@ export function JobProgress({
   if (phase === "failed") {
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
-        <div className="text-sm font-medium text-red-700">生成失败</div>
+        <div className="text-sm font-medium text-red-700">{t("jp.failed")}</div>
         {error ? <div className="mt-1 text-xs text-red-600">{error}</div> : null}
         {onRetry ? (
           <button
             onClick={onRetry}
             className="mt-3 rounded-full bg-red-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-red-700"
           >
-            重试
+            {t("common.retry")}
           </button>
         ) : null}
       </div>
@@ -71,7 +74,7 @@ export function JobProgress({
     <div className="rounded-2xl border border-zinc-200 bg-white p-4">
       {/* 阶段步进 */}
       <div className="flex items-center gap-2">
-        {PHASES.map((p, i) => {
+        {PHASE_KEYS.map((p, i) => {
           const state = i < active ? "past" : i === active ? "current" : "future";
           return (
             <div key={p.key} className="flex flex-1 items-center gap-2">
@@ -88,9 +91,9 @@ export function JobProgress({
                 {state === "past" ? "✓" : i + 1}
               </span>
               <span className={["text-xs", state === "future" ? "text-zinc-400" : "text-zinc-700"].join(" ")}>
-                {p.label}
+                {t(p.tk)}
               </span>
-              {i < PHASES.length - 1 ? <span className="h-px flex-1 bg-zinc-200" /> : null}
+              {i < PHASE_KEYS.length - 1 ? <span className="h-px flex-1 bg-zinc-200" /> : null}
             </div>
           );
         })}
@@ -104,10 +107,10 @@ export function JobProgress({
       ) : null}
 
       <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">
-        <span>{phase === "done" ? "已完成" : label ?? PHASES[active]?.label}</span>
+        <span>{phase === "done" ? t("jp.doneText") : label ?? t(PHASE_KEYS[active]?.tk ?? "jp.running")}</span>
         <span>
-          {phase !== "done" && startedAtMs ? `已等待 ${elapsed}s · ` : ""}
-          {phase !== "done" ? expectedText : ""}
+          {phase !== "done" && startedAtMs ? t("jp.elapsed", { n: elapsed }) : ""}
+          {phase !== "done" ? expectedText ?? "" : ""}
         </span>
       </div>
 

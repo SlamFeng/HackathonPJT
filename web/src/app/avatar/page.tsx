@@ -17,6 +17,7 @@ import AutoAspectImage from "@/components/AutoAspectImage";
 import { UploadField } from "@/components/UploadField";
 import { JobProgress } from "@/components/JobProgress";
 import { NextStepBar } from "@/components/NextStepBar";
+import { useT } from "@/i18n";
 
 const optionalIntInRange = (label: string, min: number, max: number) =>
   z
@@ -60,6 +61,7 @@ type BodyFormState = {
 };
 
 export default function AvatarPage() {
+  const t = useT();
   const setAvatar = useAppStore((s) => s.setAvatar);
   const setPoseRender = useAppStore((s) => s.setPoseRender);
   const patchPoseRender = useAppStore((s) => s.patchPoseRender);
@@ -82,7 +84,7 @@ export default function AvatarPage() {
       await switchToAvatar(id, imageUrlAbs);
       await refreshAvatars();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "切换模特失败");
+      setError(e instanceof Error ? e.message : t("av.err.switch"));
     }
   }
 
@@ -91,7 +93,7 @@ export default function AvatarPage() {
       await deleteAvatarApi(id);
       await refreshAvatars();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "删除失败");
+      setError(e instanceof Error ? e.message : t("av.err.delete"));
     }
   }
 
@@ -159,22 +161,22 @@ export default function AvatarPage() {
     setError(null);
     setBusy(true);
     setProgress(0);
-    setStage("校验输入");
+    setStage("av.stage.valid");
     setStartedAt(Date.now());
 
     try {
       const parsed = bodySchema.safeParse(form);
       if (!parsed.success) {
-        throw new Error(parsed.error.issues[0]?.message ?? "参数不合法");
+        throw new Error(parsed.error.issues[0]?.message ?? t("av.err.param"));
       }
-      if (!file) throw new Error("请先上传照片");
-      if (file.size > 10 * 1024 * 1024) throw new Error("图片需 ≤10MB");
+      if (!file) throw new Error(t("av.err.noPhoto"));
+      if (file.size > 10 * 1024 * 1024) throw new Error(t("av.err.tooBig"));
 
-      setStage("上传图片");
+      setStage("av.stage.upload");
       setProgress(0.1);
       const uploaded = await uploadAsset(file);
 
-      setStage("创建生成任务");
+      setStage("av.stage.create");
       setProgress(0.2);
       const job = await createJob({
         jobType: "avatar_generate",
@@ -187,7 +189,7 @@ export default function AvatarPage() {
       const { job: latest, image } = await waitForImageJob(job.jobId, {
         minProgress: 0.2,
         onUpdate: (current) => {
-          setStage(current.stage ?? "处理中");
+          setStage("av.stage.processing");
           setProgress(Math.max(current.progress ?? 0, 0.2));
         },
       });
@@ -209,12 +211,12 @@ export default function AvatarPage() {
       }
       setAvatar({ avatarId, avatarImageUrl });
       setProgress(1);
-      setStage(latest.status === "succeeded" ? "完成，正在后台预生成姿态" : "完成");
+      setStage(latest.status === "succeeded" ? "av.stage.donePrefetch" : "av.stage.done");
       setGenerated(true);
       startPosePrefetch(avatarImageUrl, avatarId);
       return;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "发生错误");
+      setError(e instanceof Error ? e.message : t("av.err.generic"));
     } finally {
       setBusy(false);
     }
@@ -223,15 +225,13 @@ export default function AvatarPage() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
       <div className="rounded-3xl border border-zinc-200/70 bg-white p-6 md:p-8">
-        <div className="text-xs text-zinc-500">创建模特</div>
-        <div className="mt-1 text-xl font-semibold tracking-tight">上传全身照并输入体型参数</div>
-        <div className="mt-2 text-sm text-zinc-600">
-          仅支持清晰正面免冠全身照（≥1080×1920，≤10MB）。生成结果为写实，身份保持优先。模特可复用于后续批量出图。
-        </div>
+        <div className="text-xs text-zinc-500">{t("av.kicker")}</div>
+        <div className="mt-1 text-xl font-semibold tracking-tight">{t("av.title")}</div>
+        <div className="mt-2 text-sm text-zinc-600">{t("av.desc")}</div>
 
         <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="rounded-3xl border border-zinc-200/70 bg-zinc-50 p-5">
-            <div className="text-sm font-medium">上传照片</div>
+            <div className="text-sm font-medium">{t("av.uploadLabel")}</div>
             <div className="mt-4">
               <UploadField
                 file={file}
@@ -240,20 +240,20 @@ export default function AvatarPage() {
                 recommendW={1080}
                 recommendH={1920}
                 disabled={busy}
-                hint="清晰正面免冠全身照，≥1080×1920，≤10MB"
+                hint={t("av.uploadHint")}
               />
             </div>
           </div>
 
           <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
-            <div className="text-sm font-medium">体型参数</div>
+            <div className="text-sm font-medium">{t("av.params")}</div>
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <Field label="身高(cm)" value={form.heightCm} onChange={(v) => setForm((s) => ({ ...s, heightCm: v }))} disabled={busy} />
-              <Field label="体重(kg)" value={form.weightKg} onChange={(v) => setForm((s) => ({ ...s, weightKg: v }))} disabled={busy} />
-              <Field label="肩宽(cm)" value={form.shoulderWidthCm} onChange={(v) => setForm((s) => ({ ...s, shoulderWidthCm: v }))} disabled={busy} />
-              <Field label="胸围(cm)" value={form.chestCm} onChange={(v) => setForm((s) => ({ ...s, chestCm: v }))} disabled={busy} />
-              <Field label="腰围(cm)" value={form.waistCm} onChange={(v) => setForm((s) => ({ ...s, waistCm: v }))} disabled={busy} />
-              <Field label="臀围(cm)" value={form.hipCm} onChange={(v) => setForm((s) => ({ ...s, hipCm: v }))} disabled={busy} />
+              <Field label={t("av.height")} value={form.heightCm} onChange={(v) => setForm((s) => ({ ...s, heightCm: v }))} disabled={busy} />
+              <Field label={t("av.weight")} value={form.weightKg} onChange={(v) => setForm((s) => ({ ...s, weightKg: v }))} disabled={busy} />
+              <Field label={t("av.shoulder")} value={form.shoulderWidthCm} onChange={(v) => setForm((s) => ({ ...s, shoulderWidthCm: v }))} disabled={busy} />
+              <Field label={t("av.chest")} value={form.chestCm} onChange={(v) => setForm((s) => ({ ...s, chestCm: v }))} disabled={busy} />
+              <Field label={t("av.waist")} value={form.waistCm} onChange={(v) => setForm((s) => ({ ...s, waistCm: v }))} disabled={busy} />
+              <Field label={t("av.hip")} value={form.hipCm} onChange={(v) => setForm((s) => ({ ...s, hipCm: v }))} disabled={busy} />
             </div>
           </div>
         </div>
@@ -261,11 +261,11 @@ export default function AvatarPage() {
         <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0 flex-1">
             {busy ? (
-              <JobProgress phase="running" label={stage} startedAtMs={startedAt} expectedText="通常 20–60 秒" />
+              <JobProgress phase="running" label={stage ? t(stage) : undefined} startedAtMs={startedAt} expectedText={t("av.expected")} />
             ) : error ? (
               <div className="text-sm text-red-600">{error}</div>
             ) : (
-              <div className="text-xs text-zinc-500">生成后会自动保存为“当前模特”，并在后台预生成各姿态</div>
+              <div className="text-xs text-zinc-500">{t("av.idle")}</div>
             )}
           </div>
           <button
@@ -276,24 +276,24 @@ export default function AvatarPage() {
             onClick={handleGenerate}
             disabled={!canSubmit}
           >
-            {busy ? "生成中…" : "开始生成"}
+            {busy ? t("av.generating") : t("av.start")}
           </button>
         </div>
       </div>
 
       {generated ? (
         <NextStepBar
-          text="模特已创建，姿态正在后台预生成。下一步上传新品，即可批量出图。"
+          text={t("av.next")}
           href="/closet"
-          cta="去上传商品"
+          cta={t("av.nextCta")}
           secondaryHref="/workbench"
-          secondaryCta="直接去批量出图"
+          secondaryCta={t("av.nextCta2")}
         />
       ) : null}
 
       {avatars.length > 0 ? (
         <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
-          <div className="text-xs text-zinc-500">我的模特（点击切换当前模特）</div>
+          <div className="text-xs text-zinc-500">{t("av.myModels")}</div>
           <div className="mt-3 flex flex-wrap gap-3">
             {avatars.map((a) => {
               const active = a.id === avatar.avatarId;
@@ -305,19 +305,19 @@ export default function AvatarPage() {
                       "block h-28 w-20 overflow-hidden rounded-2xl border-2 transition-colors",
                       active ? "border-zinc-900" : "border-transparent hover:border-zinc-300",
                     ].join(" ")}
-                    title={a.isDefault ? "默认数字人" : "点击设为当前"}
+                    title={a.isDefault ? t("av.defaultTitle") : t("av.switchTitle")}
                   >
                     <img src={a.imageUrl} alt="avatar" className="h-full w-full bg-zinc-100 object-cover" />
                   </button>
                   {a.isDefault ? (
                     <span className="absolute left-1 top-1 rounded-full bg-zinc-900 px-1.5 py-0.5 text-[10px] text-zinc-50">
-                      默认
+                      {t("av.default")}
                     </span>
                   ) : null}
                   <button
                     onClick={() => handleDeleteAvatar(a.id)}
                     className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs text-zinc-500 shadow ring-1 ring-zinc-200 hover:text-red-600"
-                    title="删除"
+                    title={t("av.deleteTitle")}
                   >
                     ×
                   </button>
@@ -330,7 +330,7 @@ export default function AvatarPage() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
-          <div className="text-xs text-zinc-500">当前模特</div>
+          <div className="text-xs text-zinc-500">{t("av.current")}</div>
           <div className="mt-3">
             {avatar.avatarImageUrl ? (
               <AutoAspectImage
@@ -341,18 +341,18 @@ export default function AvatarPage() {
               />
             ) : (
               <div className="flex h-[420px] w-full items-center justify-center rounded-3xl bg-zinc-50 text-xs text-zinc-500">
-                尚未生成
+                {t("av.notGenerated")}
               </div>
             )}
           </div>
         </div>
         <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
-          <div className="text-xs text-zinc-500">提示</div>
+          <div className="text-xs text-zinc-500">{t("av.tip")}</div>
           <div className="mt-2 text-sm leading-6 text-zinc-700">
             <ul className="list-disc space-y-2 pl-5">
-              <li>若照片遮挡/侧脸/模糊，身份一致性会明显下降。</li>
-              <li>生成质量由质检门控决定，失败会自动重试或降级返回可用结果。</li>
-              <li>下一步：到「商品库」上传新品，再到「批量出图」一键产出整批上身图。</li>
+              <li>{t("av.tip1")}</li>
+              <li>{t("av.tip2")}</li>
+              <li>{t("av.tip3")}</li>
             </ul>
           </div>
         </div>
