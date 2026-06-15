@@ -13,7 +13,7 @@ import httpx
 
 from .. import runtime_config
 from ..generation_logs import generation_log_store
-from ..prompts import build_prompt, self_correction_prompt
+from ..prompts import build_prompt, self_correction_prompt, vton_tryon_demo_prompt
 from ..settings import settings
 
 
@@ -398,9 +398,14 @@ class NanobananaProvider:
         prompt: str,
         input_image_urls: list[str],
         log_id: str,
+        models: list[str] | None = None,
     ) -> tuple[bytes, str, str, dict[str, Any]]:
-        """方案 C: 按 fallback 链依次尝试模型，直到任意模型返回图片。"""
+        """方案 C: 按 fallback 链依次尝试模型，直到任意模型返回图片。
+
+        models 不为空时用指定的模型链（垂立调试链路用它来独立指定模型）。
+        """
         modalities = modalities or ["TEXT", "IMAGE"]
+        model_chain = models or self._model_fallback_chain
         last_errors: list[str] = []
         round_record: dict[str, Any] = {
             "roundIndex": round_index,
@@ -412,7 +417,7 @@ class NanobananaProvider:
             "attempts": [],
         }
 
-        for model in self._model_fallback_chain:
+        for model in model_chain:
             for retry_index in range(2):
                 started_at = int(time.time() * 1000)
                 retry_parts = parts
@@ -579,6 +584,78 @@ class NanobananaProvider:
         except Exception:
             return img_bytes, mime, extracted_url
 
+    async def _call_demo_vton(
+        self,
+        *,
+        inputs: dict[str, Any],
+        constraints: dict[str, Any] | None,
+        log_id: str,
+        timeout: float,
+    ) -> dict[str, Any]:
+        """垂立调试链路：与生产完全隔离的单遍试穿。
+
+        - 提示词：管理员自定义（runtime）> 代码内置 vton_tryon_demo_prompt；
+        - 模型：管理员指定的 demo 模型（+ 2.5 兜底）> 默认模型链；
+        - 单遍生成、不做自修正/兜底改写，输出即所选模型对所调提示词的真实结果，便于独立调参。
+        """
+        avatar_url = inputs.get("avatarImageUrl")
+        garment_url = inputs.get("garmentImageUrl")
+        garment_category = inputs.get("garmentCategory")
+        if not avatar_url or not garment_url:
+            raise RuntimeError("缺少 avatarImageUrl 或 garmentImageUrl")
+
+        avatar_bytes, avatar_mime = await self._read_uploaded_image(str(avatar_url), timeout=min(20, float(timeout)))
+        garment_bytes, garment_mime = await self._read_uploaded_image(str(garment_url), timeout=min(20, float(timeout)))
+
+        custom_prompt = runtime_config.get_demo_lane_prompt()
+        prompt = custom_prompt or vton_tryon_demo_prompt(inputs=inputs, constraints=constraints)
+        demo_model = runtime_config.get_demo_lane_model()
+        models = [demo_model, "gemini-2.5-flash-image"] if demo_model else None
+
+        separator = "=" * 40
+        print(f"\n{separator}\n[DEMO-LANE vton] model={demo_model or '(default chain)'}  promptSource={'custom' if custom_prompt else 'builtin'}\n{separator}")
+        print(prompt)
+        print(f"{separator}\n", flush=True)
+
+        parts: list[dict[str, Any]] = [
+            {"text": prompt},
+            {"text": "【图片 A：目标人物（垂立）。必须保持身份、姿态、背景与画幅】"},
+            {"inlineData": {"mimeType": avatar_mime, "data": base64.b64encode(avatar_bytes).decode("utf-8")}},
+            {"text": "【图片 B：干净服装单品图。必须把这件服装穿到图片 A 人物身上，逐项保真】"},
+            {"inlineData": {"mimeType": garment_mime, "data": base64.b64encode(garment_bytes).decode("utf-8")}},
+        ]
+        meta: dict[str, Any] = {
+            "provider": "nanobanana",
+            "mode": "remote",
+            "demoLane": True,
+            "demoLaneModelSetting": demo_model,
+            "demoLanePromptSource": "custom" if custom_prompt else "builtin",
+            "poseId": "neutral_stand",
+            "garmentCategory": garment_category,
+            "generationLogId": log_id,
+        }
+        try:
+            img_bytes, mime, model_used, round_record = await self._generate_with_fallback(
+                parts=parts,
+                timeout=timeout,
+                round_index=1,
+                kind="demo_initial_generation",
+                prompt=prompt,
+                input_image_urls=[str(avatar_url), str(garment_url)],
+                log_id=log_id,
+                models=models,
+            )
+        except Exception as e:
+            await generation_log_store.finish(log_id, status="failed", error=str(e), meta=meta)
+            raise
+
+        out_url = self._save_generated_image(img_bytes, mime)
+        round_record["outputImageUrl"] = out_url
+        await generation_log_store.append_round(log_id, round_record)
+        meta["model"] = model_used
+        await generation_log_store.finish(log_id, status="succeeded", final_image_url=out_url, meta=meta)
+        return {"imageUrl": out_url, "meta": meta}
+
     async def _call(
         self,
         *,
@@ -663,6 +740,17 @@ class NanobananaProvider:
                         print(f"[DIMS] input image: {dims[0]}x{dims[1]}", flush=True)
                 except Exception:
                     pass
+
+        # 垂立调试链路（demo lane）：开关开启且为 neutral_stand 试穿时，走独立单遍链路，
+        # 生产链路（下方 Round1+自修正+兜底）完全不受影响。
+        if (
+            task == "vton_tryon"
+            and str(inputs.get("poseId")) == "neutral_stand"
+            and runtime_config.demo_lane_enabled()
+        ):
+            return await self._call_demo_vton(
+                inputs=inputs, constraints=constraints, log_id=log_id, timeout=float(timeout)
+            )
 
         prompt = build_prompt(task=task, inputs=inputs, constraints=constraints)
         # ====== 调试日志：打印完整 Round 1 prompt ======

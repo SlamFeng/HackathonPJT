@@ -12,6 +12,10 @@ from ..db.models import AppSetting, Job, UsageEvent, User
 
 KEY_API = "nanobanana_api_key"
 KEY_MODEL = "nanobanana_model"
+# 垂立调试链路（demo lane）持久化键
+KEY_DEMO_ENABLED = "demo_lane_enabled"
+KEY_DEMO_MODEL = "demo_lane_model"
+KEY_DEMO_PROMPT = "demo_lane_prompt"
 
 
 async def _upsert(db: AsyncSession, key: str, value: str | None) -> None:
@@ -31,6 +35,12 @@ async def load_into_runtime(db: AsyncSession) -> None:
             runtime_config.set_api_key(r.value)
         elif r.key == KEY_MODEL:
             runtime_config.set_model(r.value)
+        elif r.key == KEY_DEMO_ENABLED:
+            runtime_config.set_demo_lane_enabled(r.value == "1")
+        elif r.key == KEY_DEMO_MODEL:
+            runtime_config.set_demo_lane_model(r.value)
+        elif r.key == KEY_DEMO_PROMPT:
+            runtime_config.set_demo_lane_prompt(r.value)
 
 
 async def update_api_key(db: AsyncSession, value: str | None) -> None:
@@ -41,6 +51,21 @@ async def update_api_key(db: AsyncSession, value: str | None) -> None:
 async def update_model(db: AsyncSession, value: str | None) -> None:
     await _upsert(db, KEY_MODEL, value or None)
     runtime_config.set_model(value)
+
+
+async def update_demo_lane_enabled(db: AsyncSession, value: bool) -> None:
+    await _upsert(db, KEY_DEMO_ENABLED, "1" if value else "0")
+    runtime_config.set_demo_lane_enabled(value)
+
+
+async def update_demo_lane_model(db: AsyncSession, value: str | None) -> None:
+    await _upsert(db, KEY_DEMO_MODEL, value or None)
+    runtime_config.set_demo_lane_model(value)
+
+
+async def update_demo_lane_prompt(db: AsyncSession, value: str | None) -> None:
+    await _upsert(db, KEY_DEMO_PROMPT, value or None)
+    runtime_config.set_demo_lane_prompt(value)
 
 
 # ===== Phase 5：管理后台数据 =====

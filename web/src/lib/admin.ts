@@ -7,6 +7,10 @@ export type AdminSettings = {
   keySource: "runtime" | "env" | "none" | string;
   model: string;
   availableModels: string[];
+  // 垂立调试链路（demo lane）
+  demoLaneEnabled: boolean;
+  demoLaneModel: string | null;
+  demoLanePrompt: string | null;
 };
 
 export type ConfigStatus = {
@@ -29,5 +33,10 @@ export const getConfigStatus = () => req<ConfigStatus>("/v1/config/status");
 export const getAdminSettings = () => req<AdminSettings>("/v1/admin/settings");
 
 // 只传需要修改的字段：传 apiKey:"" 表示清除；不传则不动
-export const updateAdminSettings = (body: { apiKey?: string | null; model?: string }) =>
-  req<AdminSettings>("/v1/admin/settings", { method: "PUT", body: JSON.stringify(body) });
+export const updateAdminSettings = (body: {
+  apiKey?: string | null;
+  model?: string;
+  demoLaneEnabled?: boolean;
+  demoLaneModel?: string | null;
+  demoLanePrompt?: string | null;
+}) => req<AdminSettings>("/v1/admin/settings", { method: "PUT", body: JSON.stringify(body) });

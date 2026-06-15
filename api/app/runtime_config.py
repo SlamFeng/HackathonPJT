@@ -8,6 +8,12 @@ from .settings import settings
 _api_key_override: str | None = None
 _model_override: str | None = None
 
+# 垂立调试链路（demo lane）：开关打开后，仅 poseId=neutral_stand 的试穿走一条
+# 与生产完全隔离的单遍链路，可独立调它的提示词与模型，方便给客户 demo 冲质量上限。
+_demo_lane_enabled: bool = False
+_demo_lane_model: str | None = None   # 该链路单独使用的模型；空=用当前默认模型
+_demo_lane_prompt: str | None = None  # 该链路单独使用的提示词；空=用代码内置 demo 提示词
+
 DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
 
 # 设置页下拉的预设模型（管理员也可自填其它模型名做对比）
@@ -57,3 +63,31 @@ def set_api_key(value: str | None) -> None:
 def set_model(value: str | None) -> None:
     global _model_override
     _model_override = value or None
+
+
+# ===== 垂立调试链路（demo lane）=====
+def demo_lane_enabled() -> bool:
+    return _demo_lane_enabled
+
+
+def get_demo_lane_model() -> str | None:
+    return _demo_lane_model
+
+
+def get_demo_lane_prompt() -> str | None:
+    return _demo_lane_prompt
+
+
+def set_demo_lane_enabled(value: bool) -> None:
+    global _demo_lane_enabled
+    _demo_lane_enabled = bool(value)
+
+
+def set_demo_lane_model(value: str | None) -> None:
+    global _demo_lane_model
+    _demo_lane_model = value or None
+
+
+def set_demo_lane_prompt(value: str | None) -> None:
+    global _demo_lane_prompt
+    _demo_lane_prompt = value or None

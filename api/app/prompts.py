@@ -121,6 +121,46 @@ def vton_tryon_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | N
     ])
 
 
+def vton_tryon_demo_prompt(*, inputs: dict[str, Any], constraints: dict[str, Any] | None) -> str:
+    """垂立调试链路（demo lane）的默认提示词。
+
+    与生产 vton_tryon_prompt 相互独立——改这里不影响生产链路。
+    相对生产版，额外加了一段「服装保真硬约束」（图案/印花/文字/颜色/材质/版型逐项不得改动），
+    针对正面垂立姿态把"敢上架"保真度顶到上限。管理员也可在「系统设置」里用自定义提示词覆盖它。
+    """
+    garment_category = inputs.get("garmentCategory") or '未指定'
+    avatar_w = inputs.get("_avatarWidth")
+    avatar_h = inputs.get("_avatarHeight")
+    dim_hint = f'输出图片必须精确保持 {avatar_w}x{avatar_h} 像素' if (avatar_w and avatar_h) else '输出图片必须与图片 A 的尺寸（宽高像素）完全相同'
+    return "\n".join([
+        '你是一个顶级的电商虚拟试穿图像编辑器，目标是产出"可直接上架"的商品上身图。',
+        '',
+        '输入图片：',
+        '- 图片 A：正面站立的目标模特全身照（垂立姿态），作为人物、姿态、背景、画幅的基准。',
+        '- 图片 B：干净的服装单品图，作为最终穿着服装的唯一真值（ground truth）。',
+        '',
+        '核心任务：把图片 A 模特身上的对应服装替换为图片 B 的目标服装，输出写实、自然、贴合的上身效果。',
+        '',
+        '【服装保真 · 硬约束（最高优先级，逐项不得违反）】',
+        '1) 图案 / 印花 / 文字 / Logo：必须与图片 B 像素级一致，位置、大小、方向、数量都不得增删或挪动；严禁简化、模糊或臆造花纹。',
+        '2) 颜色：必须与图片 B 完全一致（色相/明度/饱和度），不得偏色、褪色或加滤镜。',
+        '3) 材质与纹理：必须还原图片 B 的面料质感（针织/牛仔/丝绸/皮革等）、光泽与褶皱走向。',
+        '4) 版型与结构：领型、领口深浅、袖长、袖型、衣长、门襟、纽扣、拉链、口袋、腰带等结构细节必须与图片 B 一致。',
+        '5) 若图片 B 为外套/风衣/大衣/夹克：必须作为外层服装，显示完整轮廓、翻领、门襟与真实下摆长度。',
+        '',
+        '【人物与画幅 · 必须保持不变】',
+        f'6) 保持图片 A 的人物身份、脸部五官、发型发色、肤色、表情、垂立姿态、手脚位置、下装、鞋子、背景与光照。',
+        '7) 服装需随人体自然贴合、产生合理的褶皱与垂坠，不要悬浮、不要错位、不要穿到别人身上。',
+        f'8) {dim_hint}；人物从头顶到鞋子完整可见，不裁切。',
+        '',
+        f'（前端品类参考：{garment_category}，但一切以图片 B 的实际服装为准。）',
+        '',
+        '失败条件：若输出仍是图片 A 原服装、或花纹/颜色/版型与图片 B 不符、或人物身份/姿态被改变，则判定失败必须重做。',
+        '',
+        'Return exactly one photorealistic edited image. The garment must match image B pixel-perfectly in pattern, text, color, material and cut.',
+    ])
+
+
 POSE_DESCRIPTIONS: dict[str, str] = {
     'hands_on_hips': '双手叉腰，手肘微曲向外，站直，肩膀放松',
     'neutral_stand': '双手自然垂立于身体两侧，站直，目视前方',

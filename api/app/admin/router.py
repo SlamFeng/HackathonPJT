@@ -30,6 +30,9 @@ def _current_settings() -> SettingsOut:
         keySource=runtime_config.key_source(),
         model=runtime_config.get_model(),
         availableModels=runtime_config.AVAILABLE_MODELS,
+        demoLaneEnabled=runtime_config.demo_lane_enabled(),
+        demoLaneModel=runtime_config.get_demo_lane_model(),
+        demoLanePrompt=runtime_config.get_demo_lane_prompt(),
     )
 
 
@@ -47,6 +50,12 @@ async def update_settings(
         await service.update_api_key(db, req.apiKey)
     if "model" in fields:
         await service.update_model(db, req.model)
+    if "demoLaneEnabled" in fields:
+        await service.update_demo_lane_enabled(db, bool(req.demoLaneEnabled))
+    if "demoLaneModel" in fields:
+        await service.update_demo_lane_model(db, req.demoLaneModel)
+    if "demoLanePrompt" in fields:
+        await service.update_demo_lane_prompt(db, req.demoLanePrompt)
     return _current_settings()
 
 

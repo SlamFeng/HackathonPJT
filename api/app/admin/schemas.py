@@ -13,12 +13,19 @@ class SettingsOut(BaseModel):
     keySource: str  # runtime | env | none
     model: str
     availableModels: list[str]
+    # 垂立调试链路（demo lane）
+    demoLaneEnabled: bool
+    demoLaneModel: str | None
+    demoLanePrompt: str | None
 
 
 class SettingsUpdate(BaseModel):
     # 用 model_fields_set 区分「未传该字段」与「传了 null/空字符串（=清除）」
     apiKey: str | None = None
     model: str | None = None
+    demoLaneEnabled: bool | None = None
+    demoLaneModel: str | None = None
+    demoLanePrompt: str | None = None
 
 
 class ConfigStatusOut(BaseModel):
