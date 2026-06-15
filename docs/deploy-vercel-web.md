@@ -104,6 +104,16 @@ sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-
 sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 docker compose version    # 能打印版本号就成功
 ```
+**再装一个新版 buildx 插件**（Amazon Linux 2023 自带的 buildx 太旧，构建会报
+`compose build requires buildx 0.17.0 or later`）：
+```bash
+mkdir -p ~/.docker/cli-plugins
+BUILDX_VER=$(curl -s https://api.github.com/repos/docker/buildx/releases/latest | grep -oP '"tag_name":\s*"\K[^"]+')
+curl -SL "https://github.com/docker/buildx/releases/download/${BUILDX_VER}/buildx-${BUILDX_VER}.linux-$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')" \
+  -o ~/.docker/cli-plugins/docker-buildx
+chmod +x ~/.docker/cli-plugins/docker-buildx
+docker buildx version     # 需 >= 0.17；若上面取不到版本号，手动换成 v0.20.1 这类具体版本重试
+```
 
 ## A7. 下载代码
 ```bash
@@ -257,6 +267,7 @@ docker compose -f docker-compose.lite-api.yml up -d
 | 前端调接口 404/连不上 | API 地址填错 | Vercel 里 `NEXT_PUBLIC_API_BASE_URL` 是否为 `https://api.你的域名`；改了要**重新 Deploy** |
 | Vercel 构建失败 | Root Directory 没设成 `web` | Settings → General → Root Directory 改为 `web`，重新部署 |
 | `curl https://api.你的域名/health` 不通 | 证书还没签好 / 端口没开 | 等 1~2 分钟；确认 A3 开了 80/443；`docker compose -f docker-compose.lite-api.yml logs caddy` 看报错 |
+| 构建报 `compose build requires buildx 0.17.0 or later` | 系统自带 buildx 太旧 | 按 A6 末尾装新版 buildx 插件到 `~/.docker/cli-plugins/`，`docker buildx version` 确认 ≥0.17 后重试 |
 | Caddy 一直签不出证书（sslip.io） | Let's Encrypt 限流或解析问题 | 换成自己买的便宜域名（选项二）通常立即可用 |
 
 ---
