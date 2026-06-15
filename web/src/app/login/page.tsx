@@ -4,9 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-context";
+import { useT } from "@/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 export default function LoginPage() {
   const router = useRouter();
+  const t = useT();
   const { refresh } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,18 +25,21 @@ export default function LoginPage() {
       await refresh();
       router.push("/workbench");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "登录失败");
+      setError(err instanceof Error ? err.message : t("login.failed"));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-50 p-6">
+    <div className="relative flex min-h-screen items-center justify-center bg-neutral-50 p-6">
+      <div className="absolute right-6 top-6">
+        <LanguageSwitcher />
+      </div>
       <form onSubmit={onSubmit} className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-8 shadow">
-        <h1 className="text-xl font-semibold text-neutral-900">登录 · AI 智能试衣间</h1>
+        <h1 className="text-xl font-semibold text-neutral-900">{t("login.title")}</h1>
         <div className="space-y-1">
-          <label className="text-sm text-neutral-600">邮箱</label>
+          <label className="text-sm text-neutral-600">{t("login.email")}</label>
           <input
             type="email"
             required
@@ -44,7 +50,7 @@ export default function LoginPage() {
           />
         </div>
         <div className="space-y-1">
-          <label className="text-sm text-neutral-600">密码</label>
+          <label className="text-sm text-neutral-600">{t("login.password")}</label>
           <input
             type="password"
             required
@@ -60,12 +66,12 @@ export default function LoginPage() {
           disabled={loading}
           className="w-full rounded-lg bg-neutral-900 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          {loading ? "登录中…" : "登录"}
+          {loading ? t("login.submitting") : t("login.submit")}
         </button>
         <p className="text-center text-sm text-neutral-500">
-          还没有账号？{" "}
+          {t("login.noAccount")}{" "}
           <a href="/register" className="text-neutral-900 underline">
-            注册
+            {t("login.toRegister")}
           </a>
         </p>
       </form>

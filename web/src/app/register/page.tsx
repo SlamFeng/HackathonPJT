@@ -4,9 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { register } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-context";
+import { useT } from "@/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const t = useT();
   const { refresh } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,7 +21,7 @@ export default function RegisterPage() {
     e.preventDefault();
     setError(null);
     if (password.length < 8) {
-      setError("密码至少 8 位");
+      setError(t("register.passwordMin"));
       return;
     }
     setLoading(true);
@@ -27,18 +30,21 @@ export default function RegisterPage() {
       await refresh();
       router.push("/workbench");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "注册失败");
+      setError(err instanceof Error ? err.message : t("register.failed"));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-50 p-6">
+    <div className="relative flex min-h-screen items-center justify-center bg-neutral-50 p-6">
+      <div className="absolute right-6 top-6">
+        <LanguageSwitcher />
+      </div>
       <form onSubmit={onSubmit} className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-8 shadow">
-        <h1 className="text-xl font-semibold text-neutral-900">注册 Ailurus</h1>
+        <h1 className="text-xl font-semibold text-neutral-900">{t("register.title")}</h1>
         <div className="space-y-1">
-          <label className="text-sm text-neutral-600">邮箱</label>
+          <label className="text-sm text-neutral-600">{t("register.email")}</label>
           <input
             type="email"
             required
@@ -49,17 +55,17 @@ export default function RegisterPage() {
           />
         </div>
         <div className="space-y-1">
-          <label className="text-sm text-neutral-600">昵称（可选）</label>
+          <label className="text-sm text-neutral-600">{t("register.displayNameOptional")}</label>
           <input
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900"
-            placeholder="店铺名 / 昵称"
+            placeholder={t("register.displayNamePlaceholder")}
           />
         </div>
         <div className="space-y-1">
-          <label className="text-sm text-neutral-600">密码（至少 8 位）</label>
+          <label className="text-sm text-neutral-600">{t("register.passwordHint")}</label>
           <input
             type="password"
             required
@@ -75,12 +81,12 @@ export default function RegisterPage() {
           disabled={loading}
           className="w-full rounded-lg bg-neutral-900 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          {loading ? "注册中…" : "注册"}
+          {loading ? t("register.submitting") : t("register.submit")}
         </button>
         <p className="text-center text-sm text-neutral-500">
-          已有账号？{" "}
+          {t("register.hasAccount")}{" "}
           <a href="/login" className="text-neutral-900 underline">
-            登录
+            {t("register.toLogin")}
           </a>
         </p>
       </form>
