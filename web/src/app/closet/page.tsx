@@ -6,32 +6,19 @@ import { absUrl, createJob, uploadAsset, waitForImageJob } from "@/lib/api";
 import { createClosetItem, deleteClosetItem, toggleFavoriteApi } from "@/lib/assets";
 import { ClosetCategory, ClosetItem, useAppStore } from "@/stores/useAppStore";
 import { NextStepBar } from "@/components/NextStepBar";
+import { useT } from "@/i18n";
 
-const categories: Array<{ id: ClosetCategory; label: string }> = [
-  { id: "top", label: "上衣" },
-  { id: "pants", label: "裤子" },
-  { id: "skirt", label: "裙子" },
-  { id: "dress", label: "连衣裙" },
-  { id: "outerwear", label: "外套" },
-  { id: "suit", label: "套装" },
-  { id: "underwear", label: "贴身衣物" },
-  { id: "shoes", label: "鞋子" },
-  { id: "accessory", label: "配饰" },
+const CATEGORY_IDS: ClosetCategory[] = [
+  "top", "pants", "skirt", "dress", "outerwear", "suit", "underwear", "shoes", "accessory",
 ];
 
 const EXTS = [".png", ".jpg", ".jpeg", ".webp"];
 const MAX_BYTES = 8 * 1024 * 1024;
 
 type FileStatus = "pending" | "uploading" | "extracting" | "done" | "failed";
-const STATUS_LABEL: Record<FileStatus, string> = {
-  pending: "排队",
-  uploading: "上传中",
-  extracting: "提取中",
-  done: "完成",
-  failed: "失败",
-};
 
 export default function ClosetPage() {
+  const t = useT();
   const closet = useAppStore((s) => s.closet);
   const upsert = useAppStore((s) => s.upsertClosetItem);
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
@@ -88,7 +75,7 @@ export default function ClosetPage() {
       }
       valid.push(f);
     }
-    setError(rejected ? `已忽略 ${rejected} 个不合格文件（仅支持 ${EXTS.map((e) => e.slice(1)).join("/")}，≤8MB）` : null);
+    setError(rejected ? t("cl.rejected", { n: rejected }) : null);
     if (valid.length) setFiles((prev) => [...prev, ...valid]);
   }
 
@@ -159,16 +146,14 @@ export default function ClosetPage() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
       <div className="rounded-3xl border border-zinc-200/70 bg-white p-6 md:p-8">
-        <div className="text-xs text-zinc-500">商品库</div>
-        <div className="mt-1 text-xl font-semibold tracking-tight">批量上传新品到商品库</div>
-        <div className="mt-2 text-sm text-zinc-600">
-          可一次选多张（单张 ≤8MB）。默认<strong>智能提取</strong>成干净单品图；若整批都是干净商品图可勾选<strong>直接上传</strong>。处理完成后到「批量出图」一键产出整批上身图。
-        </div>
+        <div className="text-xs text-zinc-500">{t("cl.kicker")}</div>
+        <div className="mt-1 text-xl font-semibold tracking-tight">{t("cl.title")}</div>
+        <div className="mt-2 text-sm text-zinc-600" dangerouslySetInnerHTML={{ __html: t("cl.desc") }} />
 
         <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
           {/* 多选拖拽区 + 已选缩略图队列 */}
           <div className="md:col-span-2 rounded-3xl border border-zinc-200/70 bg-zinc-50 p-5">
-            <div className="text-sm font-medium">选择图片（可多选）</div>
+            <div className="text-sm font-medium">{t("cl.pickImages")}</div>
             <label
               onDragOver={(e) => {
                 e.preventDefault();
@@ -190,8 +175,8 @@ export default function ClosetPage() {
                 <path d="M12 16V4m0 0L8 8m4-4l4 4" strokeLinecap="round" strokeLinejoin="round" />
                 <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" strokeLinecap="round" />
               </svg>
-              <div className="text-sm font-medium text-zinc-700">点击选择多张，或把图片拖进来</div>
-              <div className="text-xs text-zinc-500">支持 png/jpg/jpeg/webp，单张 ≤8MB</div>
+              <div className="text-sm font-medium text-zinc-700">{t("cl.dropzone")}</div>
+              <div className="text-xs text-zinc-500">{t("cl.dropHint")}</div>
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
@@ -205,10 +190,10 @@ export default function ClosetPage() {
             {files.length > 0 ? (
               <div className="mt-4">
                 <div className="mb-2 flex items-center justify-between text-xs text-zinc-500">
-                  <span>已选 {files.length} 张</span>
+                  <span>{t("cl.selectedN", { n: files.length })}</span>
                   {!busy ? (
                     <button onClick={() => setFiles([])} className="underline hover:text-zinc-700">
-                      全部清空
+                      {t("cl.clearAll")}
                     </button>
                   ) : null}
                 </div>
@@ -229,7 +214,7 @@ export default function ClosetPage() {
                                   : "bg-amber-100 text-amber-700",
                             ].join(" ")}
                           >
-                            {STATUS_LABEL[st]}
+                            {t(`cl.st.${st}`)}
                           </div>
                         ) : null}
                         {!busy ? (
@@ -249,21 +234,21 @@ export default function ClosetPage() {
           </div>
 
           <div className="rounded-3xl border border-zinc-200/70 bg-white p-5">
-            <div className="text-sm font-medium">分类（应用于本次全部）</div>
+            <div className="text-sm font-medium">{t("cl.category")}</div>
             <div className="mt-4 flex flex-wrap gap-2">
-              {categories.map((c) => {
-                const active = category === c.id;
+              {CATEGORY_IDS.map((id) => {
+                const active = category === id;
                 return (
                   <button
-                    key={c.id}
+                    key={id}
                     className={[
                       "rounded-full px-3 py-1.5 text-sm transition-colors",
                       active ? "bg-zinc-950 text-zinc-50" : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50",
                     ].join(" ")}
-                    onClick={() => setCategory(c.id)}
+                    onClick={() => setCategory(id)}
                     disabled={busy}
                   >
-                    {c.label}
+                    {t(`cat.${id}`)}
                   </button>
                 );
               })}
@@ -273,7 +258,7 @@ export default function ClosetPage() {
 
         {/* 处理方式：智能提取（默认） vs 直接上传 */}
         <div className="mt-4">
-          <div className="text-sm font-medium">处理方式</div>
+          <div className="text-sm font-medium">{t("cl.mode")}</div>
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <button
               type="button"
@@ -285,12 +270,13 @@ export default function ClosetPage() {
               ].join(" ")}
             >
               <div className="flex items-center gap-2 text-sm font-medium">
-                智能提取单品
-                <span className={["rounded-full px-2 py-0.5 text-[10px]", mode === "extract" ? "bg-zinc-50 text-zinc-900" : "bg-zinc-900 text-zinc-50"].join(" ")}>推荐</span>
+                {t("cl.mode.extract")}
+                <span className={["rounded-full px-2 py-0.5 text-[10px]", mode === "extract" ? "bg-zinc-50 text-zinc-900" : "bg-zinc-900 text-zinc-50"].join(" ")}>{t("cl.mode.recommend")}</span>
               </div>
-              <div className={["mt-1.5 text-xs leading-5", mode === "extract" ? "text-zinc-300" : "text-zinc-500"].join(" ")}>
-                图里有<strong>模特 / 人体 / 背景 / 杂物</strong>时选这个。系统自动抠出干净的服装单品图，试穿效果最好。
-              </div>
+              <div
+                className={["mt-1.5 text-xs leading-5", mode === "extract" ? "text-zinc-300" : "text-zinc-500"].join(" ")}
+                dangerouslySetInnerHTML={{ __html: t("cl.mode.extractHint") }}
+              />
             </button>
 
             <button
@@ -302,19 +288,21 @@ export default function ClosetPage() {
                 mode === "direct" ? "border-zinc-900 bg-zinc-900 text-zinc-50" : "border-zinc-200 bg-white hover:bg-zinc-50",
               ].join(" ")}
             >
-              <div className="text-sm font-medium">这些都是干净商品图，直接上传</div>
-              <div className={["mt-1.5 text-xs leading-5", mode === "direct" ? "text-zinc-300" : "text-zinc-500"].join(" ")}>
-                仅当本批图片都是<strong>纯色 / 白底、只有服装本体、无模特无杂物</strong>时用。跳过提取，秒入库。
-              </div>
+              <div className="text-sm font-medium">{t("cl.mode.direct")}</div>
+              <div
+                className={["mt-1.5 text-xs leading-5", mode === "direct" ? "text-zinc-300" : "text-zinc-500"].join(" ")}
+                dangerouslySetInnerHTML={{ __html: t("cl.mode.directHint") }}
+              />
             </button>
           </div>
 
           {mode === "direct" ? (
             <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-4">
-              <div className="text-sm font-medium text-amber-900">⚠️ 直接上传前请确认本批都是干净的商品图</div>
-              <div className="mt-1 text-xs leading-5 text-amber-800">
-                若图中含<strong>模特或杂物</strong>，试穿会出现「衣服穿在别人身上」「版型错乱」等问题。这种情况请改用「智能提取单品」。
-              </div>
+              <div className="text-sm font-medium text-amber-900">{t("cl.direct.warnTitle")}</div>
+              <div
+                className="mt-1 text-xs leading-5 text-amber-800"
+                dangerouslySetInnerHTML={{ __html: t("cl.direct.warnBody") }}
+              />
               <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm text-amber-900">
                 <input
                   type="checkbox"
@@ -323,7 +311,7 @@ export default function ClosetPage() {
                   className="mt-0.5"
                   disabled={busy}
                 />
-                <span>我确认本批都是干净的商品图（无模特、无杂物）</span>
+                <span>{t("cl.direct.confirm")}</span>
               </label>
             </div>
           ) : null}
@@ -338,36 +326,34 @@ export default function ClosetPage() {
           disabled={!canSubmit}
         >
           {busy
-            ? `处理中…（${Object.values(status).filter((s) => s === "done").length}/${files.length}）`
+            ? t("cl.btn.processing", { done: Object.values(status).filter((s) => s === "done").length, total: files.length })
             : mode === "extract"
-              ? `提取并上传 ${files.length || ""} 张`
-              : `直接上传 ${files.length || ""} 张`}
+              ? t("cl.btn.extractN", { n: files.length || "" })
+              : t("cl.btn.directN", { n: files.length || "" })}
         </button>
         {error ? <div className="mt-3 text-sm text-red-600">{error}</div> : null}
         {done ? (
           <div className="mt-3 text-sm text-zinc-700">
-            已入库 <strong>{done.ok}</strong> 件
-            {done.fail ? <span className="text-red-600">，失败 {done.fail} 件（已保留可重试）</span> : null}。
+            {t("cl.doneOk", { n: done.ok })}
+            {done.fail ? <span className="text-red-600">{t("cl.doneFail", { n: done.fail })}</span> : null}
           </div>
         ) : null}
       </div>
 
       {done && done.ok > 0 ? (
-        <NextStepBar text={`已上传 ${done.ok} 件新品，去批量出图产出整批上身图。`} href="/workbench" cta="去批量出图" />
+        <NextStepBar text={t("cl.next", { n: done.ok })} href="/workbench" cta={t("cl.nextCta")} />
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {closet.length === 0 ? (
           <div className="md:col-span-3 rounded-3xl border border-zinc-200/70 bg-white p-10 text-center text-sm text-zinc-500">
-            商品库还是空的。上传新品后即可到「批量出图」一键产出上身图。
+            {t("cl.empty")}
           </div>
         ) : (
           closet.map((item) => (
             <div key={item.id} className="rounded-3xl border border-zinc-200/70 bg-white p-4">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs text-zinc-500">
-                  {categories.find((c) => c.id === item.category)?.label ?? item.category}
-                </div>
+                <div className="text-xs text-zinc-500">{t(`cat.${item.category}`)}</div>
                 <div className="flex items-center gap-2">
                   <button
                     className={[
@@ -376,13 +362,13 @@ export default function ClosetPage() {
                     ].join(" ")}
                     onClick={() => handleToggleFavorite(item.id)}
                   >
-                    {item.favorited ? "已收藏" : "收藏"}
+                    {item.favorited ? t("act.favorited") : t("act.favorite")}
                   </button>
                   <button
                     className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-500 transition-colors hover:border-red-200 hover:text-red-600"
                     onClick={() => handleDelete(item.id)}
                   >
-                    删除
+                    {t("common.delete")}
                   </button>
                 </div>
               </div>

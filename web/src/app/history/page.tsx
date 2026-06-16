@@ -13,10 +13,12 @@ import {
   type TryonRecord,
 } from "@/lib/assets";
 import { POSES } from "@/stores/useAppStore";
-
-const poseLabel = (key: string | null) => POSES.find((p) => p.id === key)?.label ?? key ?? "—";
+import { useT } from "@/i18n";
 
 export default function HistoryPage() {
+  const t = useT();
+  const poseLabel = (key: string | null) =>
+    key && POSES.some((p) => p.id === key) ? t(`pose.${key}`) : key ?? "—";
   const [tryons, setTryons] = useState<TryonRecord[]>([]);
   const [avatars, setAvatars] = useState<AvatarRecord[]>([]);
   const [closet, setCloset] = useState<ClosetItemRecord[]>([]);
@@ -74,15 +76,15 @@ export default function HistoryPage() {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div className="rounded-3xl border border-zinc-200/70 bg-white p-6 md:p-8">
-        <div className="text-xs text-zinc-500">出图记录</div>
-        <div className="mt-1 text-xl font-semibold tracking-tight">我的上身图</div>
-        <div className="mt-2 text-sm text-zinc-600">这里的记录已保存在服务器，刷新或换设备登录都还在。</div>
+        <div className="text-xs text-zinc-500">{t("hi.kicker")}</div>
+        <div className="mt-1 text-xl font-semibold tracking-tight">{t("hi.title")}</div>
+        <div className="mt-2 text-sm text-zinc-600">{t("hi.desc")}</div>
 
         {/* 视图切换：按批次（交付单位）/ 按单图 */}
         <div className="mt-5 flex gap-2">
           {([
-            { id: "batch", label: "按批次" },
-            { id: "single", label: "按单图" },
+            { id: "batch", label: t("hi.view.batch") },
+            { id: "single", label: t("hi.view.single") },
           ] as const).map((v) => (
             <button
               key={v.id}
@@ -99,7 +101,7 @@ export default function HistoryPage() {
 
         {view === "single" ? (
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <span className="text-xs text-zinc-500">按模特筛选：</span>
+            <span className="text-xs text-zinc-500">{t("hi.filterModel")}</span>
             <button
               onClick={() => setAvatarFilter("all")}
               className={[
@@ -107,7 +109,7 @@ export default function HistoryPage() {
                 avatarFilter === "all" ? "bg-zinc-950 text-zinc-50" : "border border-zinc-200 hover:bg-zinc-50",
               ].join(" ")}
             >
-              全部
+              {t("hi.all")}
             </button>
             {avatars.map((a, i) => (
               <button
@@ -118,8 +120,8 @@ export default function HistoryPage() {
                   avatarFilter === a.id ? "bg-zinc-950 text-zinc-50" : "border border-zinc-200 hover:bg-zinc-50",
                 ].join(" ")}
               >
-                {a.name || `模特 ${i + 1}`}
-                {a.isDefault ? " · 默认" : ""}
+                {a.name || t("hi.modelN", { n: i + 1 })}
+                {a.isDefault ? ` · ${t("av.default")}` : ""}
               </button>
             ))}
           </div>
@@ -127,11 +129,11 @@ export default function HistoryPage() {
       </div>
 
       {loading ? (
-        <div className="rounded-3xl border border-zinc-200/70 bg-white p-10 text-center text-sm text-zinc-500">加载中…</div>
+        <div className="rounded-3xl border border-zinc-200/70 bg-white p-10 text-center text-sm text-zinc-500">{t("common.loading")}</div>
       ) : view === "batch" ? (
         batches.length === 0 ? (
           <div className="rounded-3xl border border-zinc-200/70 bg-white p-10 text-center text-sm text-zinc-500">
-            暂无批次记录。去「批量出图」产出第一批上身图吧。
+            {t("hi.emptyBatch")}
           </div>
         ) : (
           <div className="flex flex-col gap-4">
@@ -140,11 +142,11 @@ export default function HistoryPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-medium text-zinc-800">
-                      批次 · {b.total} 张
-                      <span className="ml-2 text-xs font-normal text-green-600">成功 {b.succeeded}</span>
-                      {b.failed ? <span className="ml-1 text-xs font-normal text-red-600">失败 {b.failed}</span> : null}
+                      {t("hi.batchN", { n: b.total })}
+                      <span className="ml-2 text-xs font-normal text-green-600">{t("hi.succeeded", { n: b.succeeded })}</span>
+                      {b.failed ? <span className="ml-1 text-xs font-normal text-red-600">{t("hi.failed", { n: b.failed })}</span> : null}
                       {b.running + b.queued > 0 ? (
-                        <span className="ml-1 text-xs font-normal text-amber-600">进行中 {b.running + b.queued}</span>
+                        <span className="ml-1 text-xs font-normal text-amber-600">{t("hi.inProgress", { n: b.running + b.queued })}</span>
                       ) : null}
                     </div>
                     <div className="mt-0.5 text-[11px] text-zinc-400">
@@ -156,7 +158,7 @@ export default function HistoryPage() {
                     disabled={b.succeeded === 0 || zipBusyId === b.batchId}
                     className="rounded-full bg-zinc-950 px-4 py-2 text-xs font-medium text-zinc-50 hover:bg-zinc-800 disabled:opacity-40"
                   >
-                    {zipBusyId === b.batchId ? "打包中…" : `打包下载 ${b.succeeded} 张`}
+                    {zipBusyId === b.batchId ? t("wb.packing") : t("wb.downloadN", { n: b.succeeded })}
                   </button>
                 </div>
                 {b.thumbnails.length > 0 ? (
@@ -171,7 +173,7 @@ export default function HistoryPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="mt-3 text-xs text-zinc-400">该批次暂无成功出图</div>
+                  <div className="mt-3 text-xs text-zinc-400">{t("hi.batchNoSuccess")}</div>
                 )}
               </div>
             ))}
@@ -179,37 +181,37 @@ export default function HistoryPage() {
         )
       ) : filtered.length === 0 ? (
         <div className="rounded-3xl border border-zinc-200/70 bg-white p-10 text-center text-sm text-zinc-500">
-          暂无出图记录。去「批量出图」产出第一批上身图吧。
+          {t("hi.emptySingle")}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-          {filtered.map((t) => {
-            const garment = t.closetItemId ? closetById.get(t.closetItemId) : undefined;
-            const av = avatarById.get(t.avatarId);
+          {filtered.map((r) => {
+            const garment = r.closetItemId ? closetById.get(r.closetItemId) : undefined;
+            const av = avatarById.get(r.avatarId);
             return (
-              <div key={t.id} className="overflow-hidden rounded-3xl border border-zinc-200/70 bg-white">
-                <img src={absUrl(t.imageUrl)} alt="tryon" className="h-64 w-full bg-zinc-50 object-contain" />
+              <div key={r.id} className="overflow-hidden rounded-3xl border border-zinc-200/70 bg-white">
+                <img src={absUrl(r.imageUrl)} alt="tryon" className="h-64 w-full bg-zinc-50 object-contain" />
                 <div className="space-y-1 p-3">
-                  <div className="text-xs font-medium text-zinc-800">姿态：{poseLabel(t.poseKey)}</div>
+                  <div className="text-xs font-medium text-zinc-800">{t("hi.pose", { v: poseLabel(r.poseKey) })}</div>
                   <div className="truncate text-[11px] text-zinc-500">
-                    模特：{av?.name || t.avatarId.slice(0, 8)}
+                    {t("hi.model", { v: av?.name || r.avatarId.slice(0, 8) })}
                   </div>
                   <div className="truncate text-[11px] text-zinc-500">
-                    商品：{garment ? garment.garmentType : t.closetItemId?.slice(0, 8) ?? "—"}
+                    {t("hi.product", { v: garment ? t(`cat.${garment.garmentType}`) : r.closetItemId?.slice(0, 8) ?? "—" })}
                   </div>
-                  <div className="text-[11px] text-zinc-400">{new Date(t.updatedAt).toLocaleString()}</div>
+                  <div className="text-[11px] text-zinc-400">{new Date(r.updatedAt).toLocaleString()}</div>
                   <div className="flex items-center gap-2 pt-1">
                     <a
                       href="/studio"
                       className="rounded-full bg-zinc-900 px-3 py-1 text-[11px] font-medium text-zinc-50 hover:bg-zinc-800"
                     >
-                      去精修
+                      {t("act.refine")}
                     </a>
                     <button
-                      onClick={() => handleDelete(t.id)}
+                      onClick={() => handleDelete(r.id)}
                       className="rounded-full border border-zinc-200 px-3 py-1 text-[11px] text-zinc-500 hover:border-red-200 hover:text-red-600"
                     >
-                      删除
+                      {t("common.delete")}
                     </button>
                   </div>
                 </div>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { useAppStore } from "@/stores/useAppStore";
+import { useT } from "@/i18n";
 
 const DISMISS_KEY = "onboarding_dismissed_v1";
 
@@ -13,6 +14,7 @@ const DISMISS_KEY = "onboarding_dismissed_v1";
  * 放在批量出图页顶部（登录默认落地页）。
  */
 export function OnboardingChecklist() {
+  const t = useT();
   const avatars = useAppStore((s) => s.avatars);
   const closet = useAppStore((s) => s.closet);
   const hydrated = useAppStore((s) => s.hydrated);
@@ -34,9 +36,9 @@ export function OnboardingChecklist() {
   if (dismissed || !hydrated || allDone) return null;
 
   const steps = [
-    { done: hasModel, label: "创建模特", hint: "上传一张全身照，生成可复用的模特", href: "/avatar", cta: "去创建" },
-    { done: hasProduct, label: "上传商品", hint: "把新品图片传入商品库（支持智能提取）", href: "/closet", cta: "去上传" },
-    { done: false, label: "批量出图", hint: "选模特+商品，一键生成整批上身图并打包下载", href: "/workbench", cta: "开始出图" },
+    { done: hasModel, label: t("onboarding.step1"), hint: t("onboarding.step1.hint"), href: "/avatar", cta: t("onboarding.step1.cta") },
+    { done: hasProduct, label: t("onboarding.step2"), hint: t("onboarding.step2.hint"), href: "/closet", cta: t("onboarding.step2.cta") },
+    { done: false, label: t("onboarding.step3"), hint: t("onboarding.step3.hint"), href: "/workbench", cta: t("onboarding.step3.cta") },
   ];
 
   function dismiss() {
@@ -52,11 +54,11 @@ export function OnboardingChecklist() {
     <div className="rounded-3xl border border-zinc-200/70 bg-gradient-to-b from-zinc-50 to-white p-5 md:p-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold tracking-tight">新手指引 · 三步出图</div>
-          <div className="mt-0.5 text-xs text-zinc-500">按这三步走，几分钟就能产出第一批商品上身图。</div>
+          <div className="text-sm font-semibold tracking-tight">{t("onboarding.title")}</div>
+          <div className="mt-0.5 text-xs text-zinc-500">{t("onboarding.subtitle")}</div>
         </div>
         <button onClick={dismiss} className="rounded-full px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600">
-          不再显示
+          {t("onboarding.dismiss")}
         </button>
       </div>
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -85,7 +87,7 @@ export function OnboardingChecklist() {
                 {s.cta} →
               </Link>
             ) : (
-              <div className="mt-3 text-xs text-green-600">已完成</div>
+              <div className="mt-3 text-xs text-green-600">{t("onboarding.done")}</div>
             )}
           </div>
         ))}

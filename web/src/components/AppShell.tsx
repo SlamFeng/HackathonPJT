@@ -8,29 +8,31 @@ import { getConfigStatus } from "@/lib/admin";
 import { getMyCredits } from "@/lib/credits";
 import { useAuth } from "@/lib/auth-context";
 import { useHydrateAssets } from "@/lib/useHydrateAssets";
+import { useT } from "@/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 // 主线导航：按卖家的活儿顺序排列（批量出图 → 模特 → 商品 → 交付）
 const nav = [
-  { href: "/workbench", label: "批量出图" },
-  { href: "/avatar", label: "模特库" },
-  { href: "/closet", label: "商品库" },
-  { href: "/history", label: "出图记录" },
+  { href: "/workbench", key: "nav.workbench" },
+  { href: "/avatar", key: "nav.avatar" },
+  { href: "/closet", key: "nav.closet" },
+  { href: "/history", key: "nav.history" },
 ];
 
 // 次要功能：精修/调试与 toC 残留，折叠在「更多」下，不进主线
 const secondaryNav = [
-  { href: "/studio", label: "单张精修" },
-  { href: "/stylist", label: "穿搭顾问" },
-  { href: "/orders", label: "订单" },
+  { href: "/studio", key: "nav.studio" },
+  { href: "/stylist", key: "nav.stylist" },
+  { href: "/orders", key: "nav.orders" },
 ];
 
 // 仅管理员可见的导航项
 const adminNav = [
-  { href: "/admin/users", label: "用户管理" },
-  { href: "/admin/jobs", label: "任务监控" },
-  { href: "/admin/usage", label: "用量统计" },
-  { href: "/admin/settings", label: "系统设置" },
-  { href: "/debug/generation-logs", label: "生成明细" },
+  { href: "/admin/users", key: "nav.admin.users" },
+  { href: "/admin/jobs", key: "nav.admin.jobs" },
+  { href: "/admin/usage", key: "nav.admin.usage" },
+  { href: "/admin/settings", key: "nav.admin.settings" },
+  { href: "/debug/generation-logs", key: "nav.admin.logs" },
 ];
 
 // 无需登录、且自带整屏布局的路由：门户与登录/注册页
@@ -47,6 +49,7 @@ function FullscreenHint({ text }: { text: string }) {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const t = useT();
   const { me, loading, signOut } = useAuth();
   // 登录后把该用户的数字人/衣橱/姿态/试穿从后端载入（每个用户一次）
   useHydrateAssets();
@@ -124,12 +127,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   if (loading) {
-    return <FullscreenHint text="加载中…" />;
+    return <FullscreenHint text={t("common.loading")} />;
   }
 
   // 未登录：等待上面的 effect 完成跳转，先渲染占位避免闪现工作台内容
   if (!me) {
-    return <FullscreenHint text="正在跳转到登录…" />;
+    return <FullscreenHint text={t("common.redirectingLogin")} />;
   }
 
   async function onLogout() {
@@ -139,25 +142,25 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const isAdmin = me.role === "admin";
   // 分组导航：主线 / 更多 / 管理（仅管理员）
-  const navGroups: Array<{ title: string | null; items: Array<{ href: string; label: string }> }> = [
+  const navGroups: Array<{ title: string | null; items: Array<{ href: string; key: string }> }> = [
     { title: null, items: nav },
-    { title: "更多", items: secondaryNav },
-    ...(isAdmin ? [{ title: "管理", items: adminNav }] : []),
+    { title: "nav.group.more", items: secondaryNav },
+    ...(isAdmin ? [{ title: "nav.group.admin", items: adminNav }] : []),
   ];
 
   return (
     <div className="flex min-h-full flex-1 bg-zinc-50 text-zinc-950">
       <aside className="hidden w-[280px] shrink-0 border-r border-zinc-200/70 bg-white p-6 md:flex md:flex-col">
         <div className="flex items-baseline justify-between">
-          <div className="text-sm font-semibold tracking-tight">AI 试衣间</div>
-          <div className="text-[11px] text-zinc-500">nanobanana-first</div>
+          <div className="text-sm font-semibold tracking-tight">{t("brand.sidebar")}</div>
+          <div className="text-[11px] text-zinc-500">{t("brand.tagline")}</div>
         </div>
         <nav className="mt-6 flex flex-col gap-1">
           {navGroups.map((group) => (
             <div key={group.title ?? "main"} className={group.title ? "mt-4" : ""}>
               {group.title ? (
                 <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
-                  {group.title}
+                  {t(group.title)}
                 </div>
               ) : null}
               {group.items.map((item) => {
@@ -171,7 +174,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       active ? "bg-zinc-900 text-zinc-50" : "text-zinc-700 hover:bg-zinc-100",
                     ].join(" ")}
                   >
-                    {item.label}
+                    {t(item.key)}
                   </Link>
                 );
               })}
@@ -179,7 +182,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="mt-auto pt-6 text-xs text-zinc-500">
-          UI 极简插画风，出图写实身份保持
+          {t("shell.footer")}
         </div>
       </aside>
 
@@ -188,7 +191,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              aria-label="菜单"
+              aria-label={t("header.menu")}
               aria-expanded={mobileNavOpen}
               onClick={() => setMobileNavOpen((v) => !v)}
               className="-ml-1 rounded-lg p-1.5 text-zinc-700 hover:bg-zinc-200/60 md:hidden"
@@ -197,28 +200,29 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {mobileNavOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
               </svg>
             </button>
-            <div className="text-sm font-medium tracking-tight">AI 智能试衣间</div>
+            <div className="text-sm font-medium tracking-tight">{t("brand.name")}</div>
           </div>
           <div className="flex items-center gap-3">
+            <LanguageSwitcher />
             {credits !== null ? (
               <Link
                 href="/credits"
                 className="rounded-full border border-zinc-300 px-3 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100"
-                title="我的额度"
+                title={t("header.creditsTitle")}
               >
-                额度 {credits}
+                {t("header.credits", { n: credits })}
               </Link>
             ) : null}
             <span className="hidden text-xs text-zinc-500 sm:inline">
               {me.displayName || me.email}
-              {me.role === "admin" ? "（管理员）" : ""}
+              {me.role === "admin" ? t("header.adminSuffix") : ""}
             </span>
             <button
               type="button"
               onClick={onLogout}
               className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs text-zinc-700 transition-colors hover:bg-zinc-100"
             >
-              退出
+              {t("header.logout")}
             </button>
           </div>
         </header>
@@ -228,7 +232,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div key={group.title ?? "main"} className={group.title ? "mt-3" : ""}>
                 {group.title ? (
                   <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
-                    {group.title}
+                    {t(group.title)}
                   </div>
                 ) : null}
                 {group.items.map((item) => {
@@ -243,7 +247,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                         active ? "bg-zinc-900 text-zinc-50" : "text-zinc-700 hover:bg-zinc-100",
                       ].join(" ")}
                     >
-                      {item.label}
+                      {t(item.key)}
                     </Link>
                   );
                 })}
@@ -255,13 +259,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5 text-sm text-amber-800 md:px-8">
             {isAdmin ? (
               <span>
-                ⚠️ 尚未配置 AI 模型 API Key，生成将走 mock（仅回显原图）。
+                {t("banner.noKey.admin")}
                 <Link href="/admin/settings" className="ml-1 font-medium text-amber-900 underline">
-                  前往「系统设置」配置 →
+                  {t("banner.noKey.adminCta")}
                 </Link>
               </span>
             ) : (
-              <span>⚠️ 系统尚未配置 AI 模型 Key，生成暂为 mock 效果，请联系管理员配置后再使用。</span>
+              <span>{t("banner.noKey.user")}</span>
             )}
           </div>
         ) : null}

@@ -13,12 +13,14 @@ import {
   PoseId,
   useAppStore,
 } from "@/stores/useAppStore";
+import { useT } from "@/i18n";
 
 function tryOnKey(poseId: PoseId, garmentId: string) {
   return `${poseId}:${garmentId}`;
 }
 
 export default function StudioPage() {
+  const t = useT();
   const avatar = useAppStore((s) => s.avatar);
   const closet = useAppStore((s) => s.closet);
   const setPoseRender = useAppStore((s) => s.setPoseRender);
@@ -69,7 +71,7 @@ export default function StudioPage() {
   async function regeneratePose(targetPoseId: PoseId) {
     setError(null);
     if (!avatar.avatarImageUrl) {
-      setError("请先生成数字人");
+      setError(t("wb.err.noModel"));
       return;
     }
 
@@ -117,7 +119,7 @@ export default function StudioPage() {
   async function handleTryOn() {
     setError(null);
     if (!poseReady || !currentPose?.imageUrl) {
-      setError("当前姿态还没有生成完成，暂时不能试穿");
+      setError(t("st.poseStatus.idle"));
       return;
     }
     if (!garment || !selectedTryOnKey) return;
@@ -183,11 +185,9 @@ export default function StudioPage() {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div className="rounded-3xl border border-zinc-200/70 bg-white p-6 md:p-8">
-        <div className="text-xs text-zinc-500">单张精修</div>
-        <div className="mt-1 text-xl font-semibold tracking-tight">选择姿态 → 选择商品 → 生成上身图</div>
-        <div className="mt-2 text-sm text-zinc-600">
-          用于单张精修/调试；批量产出请用「批量出图」。模特创建后会自动预生成各姿态，已生成的姿态与上身图会被缓存，切换回来可直接查看。
-        </div>
+        <div className="text-xs text-zinc-500">{t("st.kicker")}</div>
+        <div className="mt-1 text-xl font-semibold tracking-tight">{t("st.title")}</div>
+        <div className="mt-2 text-sm text-zinc-600">{t("st.desc")}</div>
       </div>
 
       {error ? (
@@ -197,8 +197,8 @@ export default function StudioPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="rounded-3xl border border-zinc-200/70 bg-white p-5 lg:col-span-3">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-medium">姿态库</div>
-            <div className="text-[10px] text-zinc-400">点选姿态 · 悬停可重生</div>
+            <div className="text-sm font-medium">{t("st.poseLib")}</div>
+            <div className="text-[10px] text-zinc-400">{t("st.poseHint")}</div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             {POSES.map((p) => {
@@ -224,7 +224,7 @@ export default function StudioPage() {
                   {/* 缩略图区：已生成显示姿态图，否则显示占位/状态，不再是空灰块 */}
                   <div className="relative aspect-[3/4] bg-zinc-100">
                     {ready ? (
-                      <img src={state!.imageUrl} alt={p.label} className="h-full w-full object-cover" />
+                      <img src={state!.imageUrl} alt={t(`pose.${p.id}`)} className="h-full w-full object-cover" />
                     ) : (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-zinc-400">
                         {running ? (
@@ -237,7 +237,7 @@ export default function StudioPage() {
                             <path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2" strokeLinecap="round" />
                           </svg>
                         )}
-                        <span className="text-[10px]">{poseStatusLabel(state?.status)}</span>
+                        <span className="text-[10px]">{t(`st.poseStatus.${state?.status ?? "idle"}`)}</span>
                       </div>
                     )}
                     {/* 悬停重生按钮（仅在有模特时可用） */}
@@ -250,12 +250,12 @@ export default function StudioPage() {
                         disabled={running}
                         className="absolute right-1 top-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white opacity-0 transition-opacity hover:bg-black/75 group-hover:opacity-100 disabled:opacity-40"
                       >
-                        {running ? "生成中" : ready || failed ? "重生" : "生成"}
+                        {running ? t("st.poseStatus.running") : ready || failed ? t("st.regen") : t("st.gen")}
                       </button>
                     ) : null}
                   </div>
                   <div className="flex items-center justify-between gap-1 px-2 py-1.5">
-                    <span className={["text-xs font-medium", active ? "text-zinc-900" : "text-zinc-700"].join(" ")}>{p.label}</span>
+                    <span className={["text-xs font-medium", active ? "text-zinc-900" : "text-zinc-700"].join(" ")}>{t(`pose.${p.id}`)}</span>
                     {active ? <span className="h-1.5 w-1.5 rounded-full bg-zinc-900" /> : null}
                   </div>
                 </div>
@@ -274,10 +274,10 @@ export default function StudioPage() {
           `}</style>
 
           <div className="mt-6">
-            <div className="text-sm font-medium">选择商品</div>
+            <div className="text-sm font-medium">{t("st.selectProduct")}</div>
             <div className="mt-3 space-y-2">
               {closet.length === 0 ? (
-                <div className="rounded-2xl bg-zinc-50 p-4 text-xs text-zinc-500">商品库为空，先到「商品库」上传新品</div>
+                <div className="rounded-2xl bg-zinc-50 p-4 text-xs text-zinc-500">{t("st.emptyCloset")}</div>
               ) : (
                 closet.slice(0, 6).map((item) => {
                   const active = garment?.id === item.id;
@@ -316,24 +316,24 @@ export default function StudioPage() {
               disabled={!canTryOn}
             >
               {tryOnRunning
-                ? "生成中…"
+                ? t("st.tryonRunning")
                 : currentTryOn?.status === "succeeded"
-                  ? "重新生成"
-                  : "生成上身图"}
+                  ? t("st.tryonRegen")
+                  : t("st.tryonBtn")}
             </button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:col-span-9">
           <PreviewCard
-            title="姿态预览"
+            title={t("st.posePreview")}
             subtitle={poseSubtitle(currentPose)}
             imageUrl={poseReady ? currentPose?.imageUrl : null}
             loading={poseRunning}
             emptyText={avatar.avatarImageUrl ? "等待当前姿态生成完成" : "请先生成数字人"}
           />
           <PreviewCard
-            title="上身图预览"
+            title={t("st.tryonPreview")}
             subtitle={tryOnSubtitle(currentTryOn)}
             imageUrl={currentTryOn?.status === "succeeded" ? currentTryOn.imageUrl : null}
             overlayImageUrl={currentTryOn?.overlayGarmentUrl}
