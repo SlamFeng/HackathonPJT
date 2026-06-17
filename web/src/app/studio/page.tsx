@@ -32,6 +32,12 @@ export default function StudioPage() {
   const [poseId, setPoseId] = useState<PoseId>(POSES[0]!.id);
   const [garment, setGarment] = useState<ClosetItem | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 加载失败的姿态缩略图（URL 404/无权限等）：降级为占位，避免显示「裂图」图标
+  const [failedPoses, setFailedPoses] = useState<Set<PoseId>>(new Set());
+  // 切换数字人后清空失败标记，让新模特的姿态图重新尝试加载
+  useEffect(() => {
+    setFailedPoses(new Set());
+  }, [avatar.avatarId]);
 
   // 刷新/进入页面后，若还没选单品：优先自动恢复一个「已有试穿结果」的 姿态+单品 组合，
   // 让之前做过的试穿图刷新后直接可见；否则退而选中第一件单品，避免预览区空白。
@@ -204,7 +210,7 @@ export default function StudioPage() {
             {POSES.map((p) => {
               const active = poseId === p.id;
               const state = avatar.poseRenders[p.id];
-              const ready = state?.status === "succeeded" && !!state.imageUrl;
+              const ready = state?.status === "succeeded" && !!state.imageUrl && !failedPoses.has(p.id);
               const running = state?.status === "running";
               const failed = state?.status === "failed";
               return (
@@ -224,7 +230,12 @@ export default function StudioPage() {
                   {/* 缩略图区：已生成显示姿态图，否则显示占位/状态，不再是空灰块 */}
                   <div className="relative aspect-[3/4] bg-zinc-100">
                     {ready ? (
-                      <img src={state!.imageUrl} alt={t(`pose.${p.id}`)} className="h-full w-full object-cover" />
+                      <img
+                        src={state!.imageUrl}
+                        alt={t(`pose.${p.id}`)}
+                        className="h-full w-full object-cover"
+                        onError={() => setFailedPoses((prev) => new Set(prev).add(p.id))}
+                      />
                     ) : (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-zinc-400">
                         {running ? (

@@ -67,15 +67,22 @@ export function useHydrateAssets(): void {
   const setCloset = useAppStore((s) => s.setCloset);
   const loadWorkingSet = useAppStore((s) => s.loadWorkingSet);
   const setHydrated = useAppStore((s) => s.setHydrated);
+  const resetAssets = useAppStore((s) => s.resetAssets);
   const lastUser = useRef<string | null>(null);
 
   useEffect(() => {
     if (!me) {
+      // 登出：清空上一个账号残留的工作集/列表，避免下个账号在同一标签页看到旧数据
       lastUser.current = null;
+      resetAssets();
       return;
     }
     if (lastUser.current === me.id) return;
     lastUser.current = me.id;
+    // 切换到新账号：先清空旧账号数据再载入。关键——若新账号没有任何模特，
+    // 下面不会调用 loadWorkingSet，必须靠这里清空工作集，否则会残留上一个账号的
+    // 「当前模特」与姿态缓存（表现为看到别人的模特 / 加载失败的姿态图）。
+    resetAssets();
 
     let cancelled = false;
     (async () => {
@@ -108,5 +115,5 @@ export function useHydrateAssets(): void {
     return () => {
       cancelled = true;
     };
-  }, [me, setAvatars, setCloset, loadWorkingSet, setHydrated]);
+  }, [me, setAvatars, setCloset, loadWorkingSet, setHydrated, resetAssets]);
 }
