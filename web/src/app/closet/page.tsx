@@ -44,9 +44,8 @@ export default function ClosetPage() {
 
   const [files, setFiles] = useState<File[]>([]);
   const [category, setCategory] = useState<ClosetCategory>("top");
-  // 默认智能提取（对卖家最稳）；「这些都是干净商品图」可整批跳过提取
-  const [mode, setMode] = useState<"extract" | "direct">("extract");
-  const [directConfirmed, setDirectConfirmed] = useState(false);
+  // 默认引导「直接上传干净商品图」以节省额度；仅当图里含模特/背景/杂物时才用智能提取
+  const [mode, setMode] = useState<"extract" | "direct">("direct");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Record<number, FileStatus>>({});
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +58,7 @@ export default function ClosetPage() {
     return () => previews.forEach((u) => URL.revokeObjectURL(u));
   }, [previews]);
 
-  const canSubmit = files.length > 0 && !busy && (mode === "extract" || directConfirmed);
+  const canSubmit = files.length > 0 && !busy;
 
   function addFiles(list: FileList | File[] | null) {
     if (!list) return;
@@ -137,7 +136,6 @@ export default function ClosetPage() {
     const fail = results.filter((r) => r === "failed").length;
     setBusy(false);
     setDone({ ok, fail });
-    setDirectConfirmed(false);
     // 仅保留失败的文件，便于重试；成功的已入库
     setFiles((prev) => prev.filter((_, i) => results[i] === "failed"));
     setStatus({});
@@ -262,25 +260,6 @@ export default function ClosetPage() {
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <button
               type="button"
-              onClick={() => setMode("extract")}
-              disabled={busy}
-              className={[
-                "rounded-2xl border p-4 text-left transition-colors",
-                mode === "extract" ? "border-zinc-900 bg-zinc-900 text-zinc-50" : "border-zinc-200 bg-white hover:bg-zinc-50",
-              ].join(" ")}
-            >
-              <div className="flex items-center gap-2 text-sm font-medium">
-                {t("cl.mode.extract")}
-                <span className={["rounded-full px-2 py-0.5 text-[10px]", mode === "extract" ? "bg-zinc-50 text-zinc-900" : "bg-zinc-900 text-zinc-50"].join(" ")}>{t("cl.mode.recommend")}</span>
-              </div>
-              <div
-                className={["mt-1.5 text-xs leading-5", mode === "extract" ? "text-zinc-300" : "text-zinc-500"].join(" ")}
-                dangerouslySetInnerHTML={{ __html: t("cl.mode.extractHint") }}
-              />
-            </button>
-
-            <button
-              type="button"
               onClick={() => setMode("direct")}
               disabled={busy}
               className={[
@@ -288,32 +267,38 @@ export default function ClosetPage() {
                 mode === "direct" ? "border-zinc-900 bg-zinc-900 text-zinc-50" : "border-zinc-200 bg-white hover:bg-zinc-50",
               ].join(" ")}
             >
-              <div className="text-sm font-medium">{t("cl.mode.direct")}</div>
+              <div className="flex items-center gap-2 text-sm font-medium">
+                {t("cl.mode.direct")}
+                <span className={["rounded-full px-2 py-0.5 text-[10px]", mode === "direct" ? "bg-zinc-50 text-zinc-900" : "bg-zinc-900 text-zinc-50"].join(" ")}>{t("cl.mode.recommend")}</span>
+              </div>
               <div
                 className={["mt-1.5 text-xs leading-5", mode === "direct" ? "text-zinc-300" : "text-zinc-500"].join(" ")}
                 dangerouslySetInnerHTML={{ __html: t("cl.mode.directHint") }}
               />
             </button>
+
+            <button
+              type="button"
+              onClick={() => setMode("extract")}
+              disabled={busy}
+              className={[
+                "rounded-2xl border p-4 text-left transition-colors",
+                mode === "extract" ? "border-zinc-900 bg-zinc-900 text-zinc-50" : "border-zinc-200 bg-white hover:bg-zinc-50",
+              ].join(" ")}
+            >
+              <div className="text-sm font-medium">{t("cl.mode.extract")}</div>
+              <div
+                className={["mt-1.5 text-xs leading-5", mode === "extract" ? "text-zinc-300" : "text-zinc-500"].join(" ")}
+                dangerouslySetInnerHTML={{ __html: t("cl.mode.extractHint") }}
+              />
+            </button>
           </div>
 
           {mode === "direct" ? (
-            <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-4">
-              <div className="text-sm font-medium text-amber-900">{t("cl.direct.warnTitle")}</div>
-              <div
-                className="mt-1 text-xs leading-5 text-amber-800"
-                dangerouslySetInnerHTML={{ __html: t("cl.direct.warnBody") }}
-              />
-              <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm text-amber-900">
-                <input
-                  type="checkbox"
-                  checked={directConfirmed}
-                  onChange={(e) => setDirectConfirmed(e.target.checked)}
-                  className="mt-0.5"
-                  disabled={busy}
-                />
-                <span>{t("cl.direct.confirm")}</span>
-              </label>
-            </div>
+            <div
+              className="mt-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-xs leading-5 text-zinc-600"
+              dangerouslySetInnerHTML={{ __html: t("cl.direct.tip") }}
+            />
           ) : null}
         </div>
 
