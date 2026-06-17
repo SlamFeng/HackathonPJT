@@ -87,6 +87,8 @@ type AppState = {
   setAvatar: (avatar: Partial<AvatarState>) => void;
   setAvatars: (avatars: AvatarSummary[]) => void;
   setHydrated: (v: boolean) => void;
+  // 清空当前用户的全部工作集与列表（切换账号/登出时调用，避免上一个账号的数据残留）
+  resetAssets: () => void;
   // 切换/载入某个数字人的完整工作集（含其姿态、试穿缓存）
   loadWorkingSet: (payload: {
     avatarId: string;
@@ -113,6 +115,8 @@ export const useAppStore = create<AppState>((set) => ({
   setAvatar: (avatar) => set({ avatar: { poseRenders: {}, tryOnRenders: {}, ...avatar } }),
   setAvatars: (avatars) => set({ avatars }),
   setHydrated: (v) => set({ hydrated: v }),
+  resetAssets: () =>
+    set({ avatar: { poseRenders: {}, tryOnRenders: {} }, avatars: [], closet: [], hydrated: false }),
   loadWorkingSet: ({ avatarId, avatarImageUrl, poseRenders, tryOnRenders }) =>
     set({ avatar: { avatarId, avatarImageUrl, poseRenders, tryOnRenders } }),
   setCloset: (items) => set({ closet: items }),
