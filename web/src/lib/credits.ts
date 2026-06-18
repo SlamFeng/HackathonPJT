@@ -1,5 +1,5 @@
 // 额度（用户侧）+ 管理后台数据 API 客户端
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 
 export type UsageEvent = {
   eventType: "grant" | "spend" | "refund" | string;

@@ -72,7 +72,7 @@ export type GenerationLogDetail = GenerationLogListItem & {
   error?: string | null;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 
 // 统一携带会话 Cookie；遇到 401 自动跳转登录页。
 async function apiFetch(input: string, init?: RequestInit): Promise<Response> {

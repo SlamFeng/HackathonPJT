@@ -1,5 +1,5 @@
 // 管理员设置 + 全局配置状态的前端 API 客户端
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 
 export type AdminSettings = {
   hasApiKey: boolean;
