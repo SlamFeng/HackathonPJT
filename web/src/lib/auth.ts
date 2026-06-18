@@ -1,4 +1,5 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+// 去掉结尾斜杠：允许把 NEXT_PUBLIC_API_BASE_URL 设为 "/"（同源代理时用），归一化为 "" → 相对地址
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 
 export type Me = {
   id: string;

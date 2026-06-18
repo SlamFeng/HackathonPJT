@@ -1,5 +1,5 @@
 // Phase 2 资产持久化的前端 API 客户端。所有请求带 cookie（credentials:include）。
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 
 export type AvatarRecord = {
   id: string;
