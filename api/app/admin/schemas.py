@@ -57,6 +57,14 @@ class GrantRequest(BaseModel):
     reason: str | None = None
 
 
+class CreateUserRequest(BaseModel):
+    email: str
+    password: str
+    displayName: str | None = None
+    role: str = "user"  # user | admin
+    initialCredits: int = 0  # 建号时发放的额度（默认 0，由管理员决定）
+
+
 class AdminJobOut(BaseModel):
     id: str
     userEmail: str

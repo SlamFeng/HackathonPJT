@@ -40,8 +40,19 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
 
 
 async def create_user(
-    db: AsyncSession, *, email: str, password: str, display_name: str | None, role: str = "user"
+    db: AsyncSession,
+    *,
+    email: str,
+    password: str,
+    display_name: str | None,
+    role: str = "user",
+    initial_credits: int | None = None,
 ) -> User:
+    """创建用户。
+
+    initial_credits=None：使用默认注册赠送额度（自助注册 / seed_admin）。
+    initial_credits=N：发放指定额度（管理员后台建号，可为 0，不走"注册赠送"避免白嫖）。
+    """
     email = email.lower()
     if await get_user_by_email(db, email) is not None:
         raise AuthError("EMAIL_TAKEN", "该邮箱已被注册")
@@ -55,13 +66,15 @@ async def create_user(
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    # Phase 5：新用户注册赠送额度（账本记一笔 grant）
+    # Phase 5：赠送额度（账本记一笔 grant）
     from ..credits import service as credits_service  # 局部导入避免循环依赖
 
-    if settings.credit_signup_grant > 0:
-        await credits_service.grant(
-            db, user_id=user.id, amount=settings.credit_signup_grant, reason="signup_grant"
-        )
+    if initial_credits is None:
+        grant_amount, reason = settings.credit_signup_grant, "signup_grant"
+    else:
+        grant_amount, reason = initial_credits, "admin_create_grant"
+    if grant_amount and grant_amount > 0:
+        await credits_service.grant(db, user_id=user.id, amount=grant_amount, reason=reason)
         await db.refresh(user)
     return user
 

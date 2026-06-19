@@ -80,6 +80,31 @@ async def list_users(db: AsyncSession, *, limit: int = 200) -> list[User]:
     return list(res.scalars().all())
 
 
+async def create_user(
+    db: AsyncSession,
+    *,
+    email: str,
+    password: str,
+    display_name: str | None,
+    role: str,
+    initial_credits: int,
+) -> User:
+    """管理员后台建号：发放指定额度（而非默认注册赠送，避免白嫖）。"""
+    from ..auth import service as auth_service  # 局部导入避免循环依赖
+
+    try:
+        return await auth_service.create_user(
+            db,
+            email=email,
+            password=password,
+            display_name=display_name,
+            role=role,
+            initial_credits=initial_credits,
+        )
+    except auth_service.AuthError as e:
+        raise AdminError(e.message)
+
+
 async def grant_credits(db: AsyncSession, *, user_id: str, amount: int, reason: str) -> User:
     try:
         uid = uuid.UUID(str(user_id))

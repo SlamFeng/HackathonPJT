@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { login } from "@/lib/auth";
+import { getRegistrationOpen, login } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-context";
 import { useT } from "@/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -15,6 +15,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [regOpen, setRegOpen] = useState(false);
+  useEffect(() => {
+    getRegistrationOpen().then(setRegOpen);
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -68,12 +72,16 @@ export default function LoginPage() {
         >
           {loading ? t("login.submitting") : t("login.submit")}
         </button>
-        <p className="text-center text-sm text-neutral-500">
-          {t("login.noAccount")}{" "}
-          <a href="/register" className="text-neutral-900 underline">
-            {t("login.toRegister")}
-          </a>
-        </p>
+        {regOpen ? (
+          <p className="text-center text-sm text-neutral-500">
+            {t("login.noAccount")}{" "}
+            <a href="/register" className="text-neutral-900 underline">
+              {t("login.toRegister")}
+            </a>
+          </p>
+        ) : (
+          <p className="text-center text-xs text-neutral-400">{t("login.registrationClosed")}</p>
+        )}
       </form>
     </div>
   );

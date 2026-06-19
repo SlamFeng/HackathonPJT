@@ -50,3 +50,15 @@ export async function register(email: string, password: string, displayName?: st
 export async function logout(): Promise<void> {
   await fetch(`${API_BASE}/v1/auth/logout`, { method: "POST", credentials: "include" });
 }
+
+// 公开查询：是否开放自助注册（登录/注册页据此决定是否展示注册入口）。失败时按"关闭"处理。
+export async function getRegistrationOpen(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/v1/auth/registration-open`, { credentials: "include" });
+    if (!res.ok) return false;
+    const d = (await res.json()) as { open?: boolean };
+    return !!d.open;
+  } catch {
+    return false;
+  }
+}
