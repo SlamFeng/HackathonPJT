@@ -13,6 +13,7 @@ from .schemas import (
     AdminJobOut,
     AdminUserOut,
     ConfigStatusOut,
+    CreateUserRequest,
     GrantRequest,
     MeCreditsOut,
     SettingsOut,
@@ -76,6 +77,28 @@ async def my_credits(user: User = Depends(get_current_user), db: AsyncSession = 
 @router.get("/v1/admin/users", response_model=list[AdminUserOut])
 async def admin_users(_admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     return [AdminUserOut.of(u) for u in await service.list_users(db)]
+
+
+@router.post("/v1/admin/users", response_model=AdminUserOut, status_code=status.HTTP_201_CREATED)
+async def admin_create_user(
+    req: CreateUserRequest, _admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)
+):
+    email = (req.email or "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="请输入合法邮箱")
+    if not req.password or len(req.password) < 8:
+        raise HTTPException(status_code=400, detail="密码至少 8 位")
+    role = req.role if req.role in ("user", "admin") else "user"
+    if req.initialCredits < 0:
+        raise HTTPException(status_code=400, detail="初始额度不能为负")
+    try:
+        u = await service.create_user(
+            db, email=email, password=req.password, display_name=req.displayName,
+            role=role, initial_credits=req.initialCredits,
+        )
+    except service.AdminError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=e.message)
+    return AdminUserOut.of(u)
 
 
 @router.post("/v1/admin/users/{user_id}/grant", response_model=AdminUserOut)

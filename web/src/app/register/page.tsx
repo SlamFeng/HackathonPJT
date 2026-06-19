@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { register } from "@/lib/auth";
+import { getRegistrationOpen, register } from "@/lib/auth";
 import { useAuth } from "@/lib/auth-context";
 import { useT } from "@/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -16,6 +16,11 @@ export default function RegisterPage() {
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // null=未知(加载中)，true/false=是否开放注册
+  const [regOpen, setRegOpen] = useState<boolean | null>(null);
+  useEffect(() => {
+    getRegistrationOpen().then(setRegOpen);
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,6 +39,23 @@ export default function RegisterPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (regOpen === false) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center bg-neutral-50 p-6">
+        <div className="absolute right-6 top-6">
+          <LanguageSwitcher />
+        </div>
+        <div className="w-full max-w-sm rounded-2xl bg-white p-8 text-center shadow">
+          <h1 className="text-xl font-semibold text-neutral-900">{t("register.closedTitle")}</h1>
+          <p className="mt-2 text-sm text-neutral-600">{t("register.closedBody")}</p>
+          <a href="/login" className="mt-5 inline-block text-sm text-neutral-900 underline">
+            {t("register.toLogin")}
+          </a>
+        </div>
+      </div>
+    );
   }
 
   return (

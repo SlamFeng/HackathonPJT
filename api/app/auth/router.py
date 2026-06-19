@@ -38,8 +38,17 @@ def _set_session_cookie(response: Response, token: str) -> None:
     )
 
 
+# 公开（无需登录）：前端登录/注册页用来决定是否展示注册入口
+@router.get("/registration-open")
+async def registration_open() -> dict:
+    return {"open": settings.registration_open}
+
+
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def register(req: RegisterRequest, response: Response, db: AsyncSession = Depends(get_db)) -> UserOut:
+    # 公开注册已关闭时拒绝（防止无限注册白嫖赠送额度）；账号改由管理员后台创建
+    if not settings.registration_open:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="注册已关闭，请联系管理员开通账号")
     try:
         user = await service.create_user(
             db, email=req.email, password=req.password, display_name=req.displayName

@@ -54,6 +54,13 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export const getMyCredits = () => req<MyCredits>("/v1/me/credits");
 
 export const listAdminUsers = () => req<AdminUser[]>("/v1/admin/users");
+export const createAdminUser = (body: {
+  email: string;
+  password: string;
+  displayName?: string;
+  role?: string;
+  initialCredits?: number;
+}) => req<AdminUser>("/v1/admin/users", { method: "POST", body: JSON.stringify(body) });
 export const grantCredits = (userId: string, amount: number, reason?: string) =>
   req<AdminUser>(`/v1/admin/users/${userId}/grant`, { method: "POST", body: JSON.stringify({ amount, reason }) });
 export const listAdminJobs = (status?: string) =>

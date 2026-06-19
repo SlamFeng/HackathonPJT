@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     # ===== Phase 5：额度 =====
     credit_signup_grant: int = 20  # 新用户注册赠送的额度
 
+    # 是否开放公开注册。默认关闭（防止无限注册白嫖赠送额度）；
+    # 账号由管理员后台创建。需要开放自助注册时设 REGISTRATION_OPEN=true。
+    registration_open: bool = False
+
     @property
     def cors_origin_list(self) -> list[str]:
         raw = self.cors_origins
